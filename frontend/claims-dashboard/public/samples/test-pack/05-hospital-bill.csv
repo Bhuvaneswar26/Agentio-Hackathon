@@ -1,0 +1,6 @@
+claimId,policyNumber,claimant,incidentDate,domain,claimType,requestedAmount,provider,deductible,copay,description,code,quantity,rate,amount,invoice,date
+CLM-TEST-105,HL-61007,Meera Joshi,2026-09-03,Health,Hospitalisation,38000,Sunrise Hospital,5000,10,Surgery OT charges,SURG-01,1,25000,25000,INV-3301,2026-09-03
+CLM-TEST-105,HL-61007,Meera Joshi,2026-09-03,Health,Hospitalisation,38000,Sunrise Hospital,5000,10,Pharmacy medicines,PHARM-01,1,6000,6000,INV-3301,2026-09-03
+CLM-TEST-105,HL-61007,Meera Joshi,2026-09-03,Health,Hospitalisation,38000,Sunrise Hospital,5000,10,Blood test CBC,LAB-CBC,1,1500,1500,INV-3301,2026-09-03
+CLM-TEST-105,HL-61007,Meera Joshi,2026-09-03,Health,Hospitalisation,38000,Sunrise Hospital,5000,10,Blood test CBC,LAB-CBC,1,1500,1500,INV-3301,2026-09-03
+CLM-TEST-105,HL-61007,Meera Joshi,2026-09-03,Health,Hospitalisation,38000,Sunrise Hospital,5000,10,Doctor consultation,DOC-01,1,4000,4000,INV-3301,2026-09-03

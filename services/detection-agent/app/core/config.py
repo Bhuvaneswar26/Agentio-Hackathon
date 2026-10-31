@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     risk_weights: dict[str, float] = Field(default_factory=lambda: {
         "policy_violations": 0.90, "duplicates": 0.90, "billing_anomalies": 0.60,
         "ml_models": 0.40, "historical_patterns": 0.50, "missing_evidence": 0.30,
+        # Related-party signals are investigation leads, never confirmed leakage: weighted below
+        # policy violations so a shared identifier alone cannot drive a claim to CRITICAL.
+        "related_party": 0.55,
     })
     risk_severity_points: dict[str, float] = Field(default_factory=lambda: {
         "LOW": 10.0, "MEDIUM": 25.0, "HIGH": 45.0, "CRITICAL": 70.0,

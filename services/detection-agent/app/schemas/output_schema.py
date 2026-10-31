@@ -43,6 +43,7 @@ class FinancialSummary(BaseModel):
     deductible: Money | None = None
     copayment: Money | None = None
     sum_insured_reduction: Money | None = None
+    duplicate_deduction: Money | None = None
     expected_settlement: Money | None = None
     proposed_settlement: Money | None = None
     calculated_discrepancy: Money | None = None
@@ -72,6 +73,7 @@ class AnalysisResponse(BaseModel):
     policy_validation: dict[str, Any] = Field(default_factory=dict)
     duplicate_analysis: dict[str, Any] = Field(default_factory=dict)
     anomaly_analysis: dict[str, Any] = Field(default_factory=dict)
+    related_party_analysis: dict[str, Any] = Field(default_factory=dict)
     findings: list[Finding] = Field(default_factory=list)
     model_insights: dict[str, Any] = Field(default_factory=dict)
     validation: dict[str, Any] = Field(default_factory=dict)

@@ -1,0 +1,429 @@
+{
+  "_scenario_notes": "Scenario 4. The MRI is billed at 26,000 where seven peer invoices at the same hospital sit near 9,200 (an ESTIMATED amount, not a confirmed one). Separately, CLM-2025-0877 belongs to a different claimant but shares this claim's payee bank account and the same incident date and provider - a related-party lead for investigation, explicitly not a fraud conclusion.",
+  "_expected": {
+    "must_contain_categories": [
+      "BILLING_ANOMALY",
+      "RELATED_PARTY_PATTERN"
+    ],
+    "must_contain_rule_ids": [
+      "RULE-RP-001"
+    ]
+  },
+  "claim": {
+    "claim_id": "CLM-2025-0904",
+    "policy_number": "POL-HLT-2025-00412",
+    "claim_type": "HEALTH",
+    "claimant": {
+      "name": "Arjun Mehta",
+      "age": 46,
+      "patient_id": "PAT-1055",
+      "bank_account": "HDFC0001234567890"
+    },
+    "provider": {
+      "provider_id": "HSP-2001",
+      "name": "Lakeview Multispeciality Hospital",
+      "provider_type": "HOSPITAL",
+      "location": "Hyderabad"
+    },
+    "incident": {
+      "incident_date": "2025-05-20",
+      "admission_date": "2025-05-20",
+      "discharge_date": "2025-05-22"
+    },
+    "invoice": {
+      "invoice_id": "INV-LV-90440",
+      "invoice_date": "2025-05-22",
+      "total_amount": 35000,
+      "currency": "INR",
+      "items": [
+        {
+          "item_id": "ITEM-001",
+          "description": "MRI Brain with contrast",
+          "service_code": "DIAG-MRI",
+          "quantity": 1,
+          "unit_price": 26000,
+          "total_amount": 26000
+        },
+        {
+          "item_id": "ITEM-002",
+          "description": "Room Charges",
+          "service_code": "ROOM-GEN",
+          "quantity": 2,
+          "unit_price": 4500,
+          "total_amount": 9000
+        }
+      ]
+    },
+    "requested_amount": 35000,
+    "proposed_settlement": 35000
+  },
+  "policy": {
+    "policy_number": "POL-HLT-2025-00412",
+    "policy_type": "HEALTH",
+    "valid_from": "2025-04-01",
+    "valid_until": "2026-03-31",
+    "inception_date": "2023-04-01",
+    "sum_insured": 500000,
+    "deductible": 10000,
+    "copayment_percentage": 10,
+    "coverage": [
+      {
+        "category": "ROOM_RENT",
+        "covered": true,
+        "daily_limit": 5000,
+        "clause_reference": "Clause 2.1"
+      },
+      {
+        "category": "ICU",
+        "covered": true,
+        "daily_limit": 10000,
+        "clause_reference": "Clause 2.2"
+      },
+      {
+        "category": "DIAGNOSTICS",
+        "covered": true,
+        "limit": 25000,
+        "clause_reference": "Clause 2.3"
+      },
+      {
+        "category": "SURGERY",
+        "covered": true,
+        "clause_reference": "Clause 2.0"
+      },
+      {
+        "category": "PHARMACY",
+        "covered": true,
+        "clause_reference": "Clause 2.0"
+      },
+      {
+        "category": "DOCTOR_FEES",
+        "covered": true,
+        "clause_reference": "Clause 2.0"
+      },
+      {
+        "category": "AMBULANCE",
+        "covered": true,
+        "limit": 2000,
+        "clause_reference": "Clause 2.4"
+      }
+    ],
+    "exclusions": [
+      {
+        "category": "CONSUMABLES",
+        "description": "Gloves, syringes, disposable gowns and masks",
+        "clause_reference": "Clause 3.1"
+      }
+    ],
+    "sublimits": [
+      {
+        "category": "ROOM_RENT",
+        "daily_limit": 5000,
+        "clause_reference": "Clause 2.1"
+      },
+      {
+        "category": "ICU",
+        "daily_limit": 10000,
+        "clause_reference": "Clause 2.2"
+      },
+      {
+        "category": "DIAGNOSTICS",
+        "limit": 25000,
+        "clause_reference": "Clause 2.3"
+      }
+    ]
+  },
+  "history": {
+    "previous_claims": [
+      {
+        "claim_id": "CLM-2025-0701",
+        "policy_number": "POL-HLT-2025-00999",
+        "claimant": {
+          "name": "Peer Patient 1",
+          "patient_id": "PAT-9001"
+        },
+        "provider": {
+          "provider_id": "HSP-2001",
+          "name": "Lakeview Multispeciality Hospital",
+          "provider_type": "HOSPITAL"
+        },
+        "incident_date": "2025-05-02",
+        "invoice": {
+          "invoice_id": "INV-LV-88001",
+          "invoice_date": "2025-05-03",
+          "total_amount": 13700,
+          "items": [
+            {
+              "item_id": "P1-1",
+              "description": "MRI Brain with contrast",
+              "service_code": "DIAG-MRI",
+              "quantity": 1,
+              "unit_price": 9120,
+              "total_amount": 9120
+            },
+            {
+              "item_id": "P1-2",
+              "description": "Room Charges",
+              "service_code": "ROOM-GEN",
+              "quantity": 1,
+              "unit_price": 4500,
+              "total_amount": 4500
+            }
+          ]
+        }
+      },
+      {
+        "claim_id": "CLM-2025-0702",
+        "policy_number": "POL-HLT-2025-00999",
+        "claimant": {
+          "name": "Peer Patient 2",
+          "patient_id": "PAT-9002"
+        },
+        "provider": {
+          "provider_id": "HSP-2001",
+          "name": "Lakeview Multispeciality Hospital",
+          "provider_type": "HOSPITAL"
+        },
+        "incident_date": "2025-05-02",
+        "invoice": {
+          "invoice_id": "INV-LV-88002",
+          "invoice_date": "2025-05-03",
+          "total_amount": 13700,
+          "items": [
+            {
+              "item_id": "P2-1",
+              "description": "MRI Brain with contrast",
+              "service_code": "DIAG-MRI",
+              "quantity": 1,
+              "unit_price": 9240,
+              "total_amount": 9240
+            },
+            {
+              "item_id": "P2-2",
+              "description": "Room Charges",
+              "service_code": "ROOM-GEN",
+              "quantity": 1,
+              "unit_price": 4500,
+              "total_amount": 4500
+            }
+          ]
+        }
+      },
+      {
+        "claim_id": "CLM-2025-0703",
+        "policy_number": "POL-HLT-2025-00999",
+        "claimant": {
+          "name": "Peer Patient 3",
+          "patient_id": "PAT-9003"
+        },
+        "provider": {
+          "provider_id": "HSP-2001",
+          "name": "Lakeview Multispeciality Hospital",
+          "provider_type": "HOSPITAL"
+        },
+        "incident_date": "2025-05-02",
+        "invoice": {
+          "invoice_id": "INV-LV-88003",
+          "invoice_date": "2025-05-03",
+          "total_amount": 13700,
+          "items": [
+            {
+              "item_id": "P3-1",
+              "description": "MRI Brain with contrast",
+              "service_code": "DIAG-MRI",
+              "quantity": 1,
+              "unit_price": 9360,
+              "total_amount": 9360
+            },
+            {
+              "item_id": "P3-2",
+              "description": "Room Charges",
+              "service_code": "ROOM-GEN",
+              "quantity": 1,
+              "unit_price": 4500,
+              "total_amount": 4500
+            }
+          ]
+        }
+      },
+      {
+        "claim_id": "CLM-2025-0704",
+        "policy_number": "POL-HLT-2025-00999",
+        "claimant": {
+          "name": "Peer Patient 4",
+          "patient_id": "PAT-9004"
+        },
+        "provider": {
+          "provider_id": "HSP-2001",
+          "name": "Lakeview Multispeciality Hospital",
+          "provider_type": "HOSPITAL"
+        },
+        "incident_date": "2025-05-02",
+        "invoice": {
+          "invoice_id": "INV-LV-88004",
+          "invoice_date": "2025-05-03",
+          "total_amount": 13700,
+          "items": [
+            {
+              "item_id": "P4-1",
+              "description": "MRI Brain with contrast",
+              "service_code": "DIAG-MRI",
+              "quantity": 1,
+              "unit_price": 9480,
+              "total_amount": 9480
+            },
+            {
+              "item_id": "P4-2",
+              "description": "Room Charges",
+              "service_code": "ROOM-GEN",
+              "quantity": 1,
+              "unit_price": 4500,
+              "total_amount": 4500
+            }
+          ]
+        }
+      },
+      {
+        "claim_id": "CLM-2025-0705",
+        "policy_number": "POL-HLT-2025-00999",
+        "claimant": {
+          "name": "Peer Patient 5",
+          "patient_id": "PAT-9005"
+        },
+        "provider": {
+          "provider_id": "HSP-2001",
+          "name": "Lakeview Multispeciality Hospital",
+          "provider_type": "HOSPITAL"
+        },
+        "incident_date": "2025-05-02",
+        "invoice": {
+          "invoice_id": "INV-LV-88005",
+          "invoice_date": "2025-05-03",
+          "total_amount": 13700,
+          "items": [
+            {
+              "item_id": "P5-1",
+              "description": "MRI Brain with contrast",
+              "service_code": "DIAG-MRI",
+              "quantity": 1,
+              "unit_price": 9600,
+              "total_amount": 9600
+            },
+            {
+              "item_id": "P5-2",
+              "description": "Room Charges",
+              "service_code": "ROOM-GEN",
+              "quantity": 1,
+              "unit_price": 4500,
+              "total_amount": 4500
+            }
+          ]
+        }
+      },
+      {
+        "claim_id": "CLM-2025-0706",
+        "policy_number": "POL-HLT-2025-00999",
+        "claimant": {
+          "name": "Peer Patient 6",
+          "patient_id": "PAT-9006"
+        },
+        "provider": {
+          "provider_id": "HSP-2001",
+          "name": "Lakeview Multispeciality Hospital",
+          "provider_type": "HOSPITAL"
+        },
+        "incident_date": "2025-05-02",
+        "invoice": {
+          "invoice_id": "INV-LV-88006",
+          "invoice_date": "2025-05-03",
+          "total_amount": 13700,
+          "items": [
+            {
+              "item_id": "P6-1",
+              "description": "MRI Brain with contrast",
+              "service_code": "DIAG-MRI",
+              "quantity": 1,
+              "unit_price": 9720,
+              "total_amount": 9720
+            },
+            {
+              "item_id": "P6-2",
+              "description": "Room Charges",
+              "service_code": "ROOM-GEN",
+              "quantity": 1,
+              "unit_price": 4500,
+              "total_amount": 4500
+            }
+          ]
+        }
+      },
+      {
+        "claim_id": "CLM-2025-0707",
+        "policy_number": "POL-HLT-2025-00999",
+        "claimant": {
+          "name": "Peer Patient 7",
+          "patient_id": "PAT-9007"
+        },
+        "provider": {
+          "provider_id": "HSP-2001",
+          "name": "Lakeview Multispeciality Hospital",
+          "provider_type": "HOSPITAL"
+        },
+        "incident_date": "2025-05-02",
+        "invoice": {
+          "invoice_id": "INV-LV-88007",
+          "invoice_date": "2025-05-03",
+          "total_amount": 13700,
+          "items": [
+            {
+              "item_id": "P7-1",
+              "description": "MRI Brain with contrast",
+              "service_code": "DIAG-MRI",
+              "quantity": 1,
+              "unit_price": 9840,
+              "total_amount": 9840
+            },
+            {
+              "item_id": "P7-2",
+              "description": "Room Charges",
+              "service_code": "ROOM-GEN",
+              "quantity": 1,
+              "unit_price": 4500,
+              "total_amount": 4500
+            }
+          ]
+        }
+      },
+      {
+        "claim_id": "CLM-2025-0877",
+        "policy_number": "POL-HLT-2025-00777",
+        "claimant": {
+          "name": "Vikram Nair",
+          "patient_id": "PAT-7777",
+          "bank_account": "HDFC0001234567890"
+        },
+        "provider": {
+          "provider_id": "HSP-2001",
+          "name": "Lakeview Multispeciality Hospital",
+          "provider_type": "HOSPITAL"
+        },
+        "incident_date": "2025-05-20",
+        "invoice": {
+          "invoice_id": "INV-LV-90441",
+          "invoice_date": "2025-05-21",
+          "total_amount": 41000,
+          "items": [
+            {
+              "item_id": "V-1",
+              "description": "CT Abdomen",
+              "service_code": "DIAG-CT",
+              "quantity": 1,
+              "unit_price": 41000,
+              "total_amount": 41000
+            }
+          ]
+        }
+      }
+    ],
+    "related_invoices": []
+  }
+}

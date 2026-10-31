@@ -68,7 +68,7 @@ def train(source: str, out_dir: Path, report_dir: Path, max_rows: int = 500_000,
         raise SystemExit(f"Only {pos} positive training rows; cannot train a reliable classifier")
     model = CatBoostClassifier(iterations=iterations, learning_rate=0.05, depth=6, loss_function="Logloss",
                                eval_metric="PRAUC", auto_class_weights="Balanced", random_seed=seed,
-                               od_type="Iter", od_wait=50, verbose=100)
+                               od_type="Iter", od_wait=50, verbose=100, train_dir=str(report_dir / "catboost_info"))
     model.fit(Pool(X.loc[tr], y.loc[tr], cat_features=cat_idx), eval_set=Pool(X.loc[va], y.loc[va], cat_features=cat_idx),
               use_best_model=True)
 

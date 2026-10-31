@@ -60,7 +60,7 @@ def train(source: str, out_dir: Path, report_dir: Path, max_rows: int = 500_000,
     if target in df.columns and y.loc[te].nunique() > 1:
         report["sanity_roc_auc_vs_labels_test"] = float(roc_auc_score(y.loc[te], -pipe.decision_function(X.loc[te])))
         report["note"] = "Labels used only for evaluation; the model is unsupervised."
-    bundle = {"pipeline": pipe, "features": feats, "version": version,
+    bundle = {"pipeline": pipe, "features": feats, "version": version, "dataset": source,
               "score_quantiles": np.quantile(train_scores, np.linspace(0, 1, 101)).tolist(),
               "thresholds": {"p1": float(np.quantile(train_scores, 0.01)), "p5": float(np.quantile(train_scores, 0.05))},
               "feature_stats": stats, "type_stats": type_stats, "column_mapping": mapping,

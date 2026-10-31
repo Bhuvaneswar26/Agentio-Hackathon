@@ -4,6 +4,7 @@ import { allSeedClaims, seedAudit, seedProviders } from '../data/seed'
 import { runPreviewDetection } from '../lib/detectPreview'
 import { DEFAULT_AGENT_URL, syncReview } from '../lib/api'
 import { uid } from '../lib/format'
+import type { ExtractedPolicy } from '../lib/policyRag'
 import type { AuditEvent, Claim, ClaimQueue, DetectionPayload, IngestJob, Role } from '../types'
 
 type Filters = {
@@ -18,9 +19,12 @@ type AppState = {
   claims: Claim[]
   audit: AuditEvent[]
   jobs: IngestJob[]
+  /** Terms read out of a policy document by the engine's RAG pipeline, ready to apply to an ingest. */
+  policyFromDocument: { policy: ExtractedPolicy; sourceName: string; at: string } | null
   filters: Filters
   setRole: (role: Role) => void
   setAgentUrl: (url: string) => void
+  setPolicyFromDocument: (entry: { policy: ExtractedPolicy; sourceName: string } | null) => void
   setFilters: (partial: Partial<Filters>) => void
   addJob: (job: IngestJob) => void
   updateJob: (id: string, patch: Partial<IngestJob>) => void
@@ -73,9 +77,12 @@ export const useAppStore = create<AppState>()(
       claims: allSeedClaims,
       audit: seedAudit,
       jobs: [],
+      policyFromDocument: null,
       filters: { domain: 'all', queue: 'all', search: '' },
       setRole: (role) => set({ role }),
       setAgentUrl: (agentUrl) => set({ agentUrl }),
+      setPolicyFromDocument: (entry) =>
+        set({ policyFromDocument: entry ? { ...entry, at: new Date().toISOString() } : null }),
       setFilters: (partial) => set({ filters: { ...get().filters, ...partial } }),
       addJob: (job) => set({ jobs: [job, ...get().jobs].slice(0, 20) }),
       updateJob: (id, patch) =>
@@ -145,6 +152,7 @@ export const useAppStore = create<AppState>()(
           claims: allSeedClaims,
           audit: seedAudit,
           jobs: [],
+          policyFromDocument: null,
           filters: { domain: 'all', queue: 'all', search: '' },
         }),
     }),

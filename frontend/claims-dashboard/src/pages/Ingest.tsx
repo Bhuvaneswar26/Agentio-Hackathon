@@ -6,12 +6,14 @@ import { runPreviewDetection } from '../lib/detectPreview'
 import { extractFromFile, extractFromUrl, formatLabel } from '../lib/extract'
 import { payloadFromObject, sampleJsonPayload } from '../lib/ingest'
 import { findingLabel, inr, uid } from '../lib/format'
+import { toPolicyRules } from '../lib/policyRag'
 import { useAppStore } from '../store/useAppStore'
 import type { Claim, DetectionPayload } from '../types'
 
 export function Ingest() {
   const navigate = useNavigate()
-  const { addJob, updateJob, ingestPayloadAsClaim, addAgentClaim, agentUrl, log, claims, jobs } = useAppStore()
+  const { addJob, updateJob, ingestPayloadAsClaim, addAgentClaim, agentUrl, log, claims, jobs, policyFromDocument } =
+    useAppStore()
   const [payload, setPayload] = useState<DetectionPayload | null>(null)
   const [busy, setBusy] = useState(false)
   const [url, setUrl] = useState('')
@@ -19,7 +21,28 @@ export function Ingest() {
   const [error, setError] = useState('')
   const [drag, setDrag] = useState(false)
   const [claimId, setClaimId] = useState<string | null>(null)
-  const preview = useMemo(() => (payload ? runPreviewDetection(payload, claims) : null), [payload, claims])
+  // A policy wording read on the Policy reader page supplies the terms a claim pack usually lacks.
+  // Pack-supplied values win: the pack is the live record, the document is the fallback.
+  const effectivePayload = useMemo<DetectionPayload | null>(() => {
+    if (!payload || !policyFromDocument) return payload
+    const doc = policyFromDocument.policy
+    return {
+      ...payload,
+      policy: {
+        ...payload.policy,
+        policyNumber: payload.policy.policyNumber ?? doc.policy_number,
+        deductible: payload.policy.deductible ?? doc.deductible,
+        copayPercent: payload.policy.copayPercent ?? doc.copayment_percentage,
+        sumInsured: payload.policy.sumInsured ?? doc.sum_insured,
+        rules: payload.policy.rules.length ? payload.policy.rules : toPolicyRules(doc),
+      },
+    }
+  }, [payload, policyFromDocument])
+
+  const preview = useMemo(
+    () => (effectivePayload ? runPreviewDetection(effectivePayload, claims) : null),
+    [effectivePayload, claims],
+  )
 
   async function run(label: string, fn: () => Promise<DetectionPayload> | DetectionPayload) {
     setError('')
@@ -47,13 +70,14 @@ export function Ingest() {
   }
 
   function parkOnDesk() {
-    if (!payload || claimId) return
-    const id = ingestPayloadAsClaim(payload)
+    if (!effectivePayload || claimId) return
+    const id = ingestPayloadAsClaim(effectivePayload)
     setClaimId(id)
   }
 
   async function sendToAgent() {
-    if (!payload) return
+    if (!effectivePayload) return
+    const payload = effectivePayload
     const jobId = uid('JOB')
     addJob({ id: jobId, name: 'Detection agent', format: payload.source.format, status: 'extracting', payload })
     try {
@@ -114,6 +138,16 @@ export function Ingest() {
         title="Ingest any claim pack"
         description="Drop a PDF invoice, claim JSON, Excel, CSV, photo, or a public web link. Images go through OCR. Structured files are mapped into the detection-agent payload without guessing missing policy facts."
       />
+
+      {policyFromDocument ? (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-brand bg-brand/10 px-4 py-3 text-sm text-ink">
+          <FileJson className="mt-0.5 h-4 w-4 shrink-0 text-brand-dark" />
+          <span>
+            Policy terms read from <strong>{policyFromDocument.sourceName}</strong> will fill any term this pack
+            does not carry. Values in the pack itself still take precedence.
+          </span>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-5">
         <div className="space-y-4 xl:col-span-2">

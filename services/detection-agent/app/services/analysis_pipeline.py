@@ -13,6 +13,7 @@ from app.engines.anomaly_engine import AnomalyEngine
 from app.engines.duplicate_engine import DuplicateEngine
 from app.engines.leakage_engine import FindingDraft, LeakageEngine, apply_review_state, summarize
 from app.engines.policy_engine import PolicyEngine
+from app.engines.related_party_engine import RelatedPartyEngine
 from app.engines.risk_engine import RiskEngine
 from app.engines.settlement_engine import SettlementEngine
 from app.ml.inference import ModelRegistry, get_registry, run_models
@@ -105,14 +106,22 @@ def run_analysis(request: AnalyzeRequest, analysis_id: str, *, settings: Setting
     dup = DuplicateEngine(settings).analyze(ctx)
     tick("duplicate_detection", t)
 
+    t = time.perf_counter()
+    related = RelatedPartyEngine(settings).analyze(ctx)
+    tick("related_party", t)
+
     registry = registry or get_registry(str(settings.model_dir))
     t = time.perf_counter()
     anomalies = AnomalyEngine(settings, registry.benchmarks).analyze(ctx, mappings)
+    # Related-party signals become findings through the same path as billing anomalies, but keep
+    # their own risk component so a shared identifier never inflates the billing-anomaly score.
+    anomalies.anomalies.extend(related.anomalies)
+    anomalies.insufficient_evidence.extend(related.insufficient_evidence)
     ml = run_models(ctx, registry, settings)
     tick("anomaly_and_ml", t)
 
     t = time.perf_counter()
-    st = SettlementEngine(settings).calculate(ctx, pol)
+    st = SettlementEngine(settings).calculate(ctx, pol, dup)
     tick("settlement", t)
 
     t = time.perf_counter()
@@ -154,7 +163,8 @@ def run_analysis(request: AnalyzeRequest, analysis_id: str, *, settings: Setting
         requested_amount=ctx.requested if ctx.requested is not None else ctx.claim_amount,
         gross_invoice_amount=st.gross_invoice_amount, eligible_amount=st.eligible_amount,
         excluded_amount=st.excluded_amount, sublimit_adjustment=st.sublimit_adjustment, deductible=st.deductible_applied,
-        copayment=st.copayment, sum_insured_reduction=st.sum_insured_reduction, expected_settlement=st.expected_settlement,
+        copayment=st.copayment, sum_insured_reduction=st.sum_insured_reduction, duplicate_deduction=st.duplicate_deduction,
+        expected_settlement=st.expected_settlement,
         proposed_settlement=st.proposed_settlement, calculated_discrepancy=st.discrepancy, currency=ctx.currency,
         settlement_strategy=st.strategy, calculation_steps=jsonable(st.steps))
 
@@ -166,11 +176,13 @@ def run_analysis(request: AnalyzeRequest, analysis_id: str, *, settings: Setting
         claim=jsonable(normalized_req.claim.model_dump(mode="python")),
         risk_assessment=RiskAssessment(**risk), financial_summary=fin, leakage_summary=LeakageSummary(**summary),
         policy_validation=policy_validation, duplicate_analysis=dup.to_dict(), anomaly_analysis=anomalies.to_dict(),
+        related_party_analysis=related.to_dict(),
         findings=findings, model_insights=model_insights, validation=validation.to_dict(), recommendation=rec,
         meta={**meta, "timings_ms": timings, "model_versions": registry.versions()})
 
     rule_results = [{"engine": "policy", "policy_active": pol.policy_active, "items": item_rows},
                     {"engine": "duplicate", **dup.to_dict()}, {"engine": "anomaly", **anomalies.to_dict()},
+                    {"engine": "related_party", **related.to_dict()},
                     {"engine": "risk", **risk}]
     predictions = [{"model": k, "status": v.get("status"), "version": v.get("version"), "output": v}
                    for k, v in ml.items() if k in ("catboost", "isolation_forest", "provider_benchmark")]
@@ -181,6 +193,6 @@ def run_analysis(request: AnalyzeRequest, analysis_id: str, *, settings: Setting
                   "eligible_amount": st.eligible_amount, "excluded_amount": st.excluded_amount,
                   "sublimit_adjustment": st.sublimit_adjustment, "deductible": st.deductible_applied,
                   "copayment": st.copayment, "sum_insured_reduction": st.sum_insured_reduction,
-                  "expected_settlement": st.expected_settlement, "proposed_settlement": st.proposed_settlement,
+                  "duplicate_deduction": st.duplicate_deduction, "expected_settlement": st.expected_settlement, "proposed_settlement": st.proposed_settlement,
                   "discrepancy": st.discrepancy, "steps": st.steps}),
         [f.model_dump(mode="json") for f in findings], jsonable(item_rows), registry.versions())

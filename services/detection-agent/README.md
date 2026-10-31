@@ -1,8 +1,8 @@
 # ClaimsGuard AI – Claims Leakage Detection Backend
 
-Structured claim + policy JSON in → one explainable analysis JSON out. No OCR/extraction (the frontend does that).
+Structured claim + policy JSON in → one explainable analysis JSON out. Policy *documents* are read by the RAG pipeline (`app/rag/`), which turns a policy wording into the structured `policy` block this engine evaluates, with a clause citation behind every value.
 
-Pipeline: `validation → normalization → policy mapping → rule engine → duplicate detection → anomaly + ML → settlement → findings/leakage → risk → explainability → PostgreSQL → JSON`.
+Pipeline: `validation → normalization → policy mapping → rule engine → duplicate detection → related-party graph → anomaly + ML → settlement → findings/leakage → risk → explainability → PostgreSQL → JSON`.
 
 ## Run
 ```bash
@@ -10,7 +10,8 @@ cp .env.example .env
 docker compose up --build            # API on :8000, docs at /docs
 # or locally
 pip install -r requirements.txt && uvicorn app.main:app --reload
-pytest -q                            # 34 tests, uses SQLite automatically
+pytest -q                            # 97 tests, uses SQLite automatically
+python samples/verify_samples.py     # end-to-end check: all 5 leakage scenarios + RAG
 ```
 `CG_EXECUTION_MODE=sync` (default) returns the full analysis in the POST response. `background`/`celery` return `202` + `analysis_id`; poll `/status`, then `/result`.
 
@@ -29,6 +30,10 @@ The React dashboard (`frontend/claims-dashboard`) posts its `DetectionPayload` (
 | POST | `/api/v1/findings/{finding_id}/review` | `CONFIRM / DISMISS / REQUEST_EVIDENCE / CORRECT` (`corrected_amount` required for CORRECT) |
 | POST | `/api/v1/analyze/{id}/recalculate` | Re-run with `item_overrides`, `policy_overrides`, `proposed_settlement`, `settlement_strategy`; review decisions carried over |
 | GET | `/api/v1/dashboard/summary` | Aggregates |
+| POST | `/api/v1/policy/extract` | Read a policy document into a structured, clause-cited policy |
+| POST | `/api/v1/policy/extract/upload` | Same, from a text/markdown/CSV upload |
+| POST | `/api/v1/policy/ask` | Retrieve the clauses that answer a question, quoted verbatim |
+| GET | `/api/v1/policy/rag/status` | RAG component availability |
 | GET | `/health`, `/api/v1/models/status` | Ops |
 
 Input: unknown extra fields are accepted, `null`s are tolerated. Optional additions beyond your contract: `item.service_date`, `policy.inception_date`, `policy.waiting_periods[]`, `policy.settlement_strategy`, `claimant.policyholder_tenure` (must use the same unit as the training data). Invalid input → `422 {success:false, status:"VALIDATION_FAILED", errors:[{field, code, message}]}`; business-rule blockers (policy-number mismatch, bad dates, unsupported currency…) return the full `validation` block.
@@ -42,10 +47,101 @@ Input: unknown extra fields are accepted, `null`s are tolerated. Optional additi
 - **`leakage_chance` is always `null`** – no validated, calibrated leakage-probability model exists. CatBoost output is an *uncalibrated suspicion score*; Isolation Forest output is an anomaly score (not a probability). Both are low-weight signals and are skipped when too few features can be built.
 - Weights, thresholds, synonyms (`app/core/taxonomy.py`), repeatable-treatment keywords and incompatible procedure pairs (empty by default) are configuration.
 
+
+## Policy-document RAG (`app/rag/`)
+
+Reads an unstructured policy wording and emits the `policy` block `/api/v1/analyze` consumes.
+
+`chunker` -> `retriever` -> `extractors` (+ optional `llm_extractor`) -> `service`
+
+- **Chunking** splits on document structure (clause numbers, headings, page markers), not a token
+  window, so every chunk is citable as *"Section 2 - Sub-Limits / Clause 2.1 / p.4"*. A letter
+  clause marker needs a delimiter (`A.`, `B)`): a bare `A ` opens an English sentence.
+- **Retrieval** is TF-IDF (word 1-2 grams, sublinear tf) cosine similarity blended 75/25 with a
+  RapidFuzz lexical score, plus per-field synonym expansion (`sub-limit`, `capped at`, `maximum
+  payable`...). It runs offline: no API key, no model download, no vector database.
+- **Extraction** is rule-based and cue-gated: a number becomes a limit only if the clause uses
+  limiting language, so *"the premium is Rs. 12,000"* never becomes a benefit cap. Each fact carries
+  its clause, the snippet that justifies it, and a confidence capped by the retrieval score.
+- **Optional Claude pass** (`use_llm: true`, needs `ANTHROPIC_API_KEY`) runs `claude-opus-5-5` over
+  the *retrieved clauses only* and must cite a supplied `clause_id`; a fact citing anything else is
+  dropped. Retrieval and rule-based extraction work fully without it.
+
+Three guarantees the rule engine depends on:
+
+| Guarantee | Behaviour |
+|---|---|
+| Nothing invented | A field the document never states is listed under `unresolved`, never defaulted. The rule engine then reports it as `INSUFFICIENT_EVIDENCE`. |
+| Disagreement surfaced | Two clauses stating different deductibles produce a `conflicts` entry with both citations and `action_required`, instead of one silently winning. |
+| Scope respected | A waiting period tied to a condition class ("36 months for pre-existing diseases") goes to `waiting_periods_requiring_review`, **not** `waiting_periods` - a category-less waiting period applies to every line, so promoting it would void every claim on the policy. |
+
+The dashboard exposes this at **Policy reader**: upload a wording (PDF/scan included, OCR runs in
+the browser), review the cited terms, then "Use for next ingest" so the next claim pack is assessed
+against those clauses. Pack-supplied values still take precedence over document-derived ones.
+
+## Related-party detection (`app/engines/related_party_engine.py`)
+
+The second half of leakage scenario 4; unusual provider *billing* is statistical and stays in
+`anomaly_engine`. Five checks across the claim and its history: a shared payee account / contact /
+email / address / id under a **different** claimant, the same incident date and provider under a
+different claimant, near-identical claimant names at one provider, single-provider concentration,
+and adjacent invoice numbers across claimants.
+
+Every signal is `UNQUANTIFIED` with `leakage=None`, carries its own `related_party` risk component
+(weight 0.55, below policy violations) and an `interpretation` naming the innocent explanation. A
+shared address is as likely to be a family policy as a claim ring, so nothing here concludes fraud
+or claims a rupee. Links are drawn only on identifiers the payload actually supplies - a missing
+field is never treated as a non-match.
+
+## Samples and verification
+
+`samples/` holds one fixture per leakage scenario plus a clean control, each with an `_expected`
+block that `verify_samples.py` asserts:
+
+| Sample | Exercises | Expected |
+|---|---|---|
+| `00-clean-claim-no-leakage` | false-positive control | 0 findings, risk 0 |
+| `01-duplicate-invoice-and-line` | scenario 1 | duplicate invoice + duplicate line |
+| `02-policy-limits-and-exclusions` | scenario 2 | 6,000 room excess + 2,400 excluded + 3,000 over sub-limit |
+| `03-settlement-miscalculation` | scenario 3 | expected 52,200 vs proposed 68,000 |
+| `04-provider-billing-and-related-party` | scenario 4 | price anomaly (ESTIMATED) + shared bank account |
+| `05-legitimate-repeat-service` | scenario 5a | physiotherapy sessions in `legitimate_repeats`, **not** duplicates |
+| `06-incomplete-evidence` | scenario 5b | `MISSING_INFORMATION`, zero calculated leakage |
+
+```bash
+python samples/build_samples.py      # regenerate the fixtures
+python samples/verify_samples.py     # assert all of the above, plus the RAG round trip
+```
+
+`verify_samples.py` also re-reads `samples/policy-document.txt` and checks the extracted terms match
+the typed policy the fixtures use - the real test that retrieval and extraction agree with the
+contract the engine evaluates.
+
 ## ML training
+All three models train from a bundled synthetic generator, so the inference path runs with no
+network access:
+
+```bash
+# 1. Generate training data (synthetic: labels come from a known generative process)
+python -m app.ml.generate_synthetic_dataset --rows 60000
+
+# 2. Train all three
+python -m app.ml.train_catboost          --source datasets/synthetic_claims.csv --max-rows 60000
+python -m app.ml.train_isolation_forest  --source datasets/synthetic_claims.csv --max-rows 60000
+python -m app.ml.train_provider_model    --items-csv datasets/billing_items.csv --source datasets/synthetic_claims.csv
+```
+
+Or against the public dataset / your own labelled claims:
+
 ```bash
 python -m app.ml.train_catboost          --source ziadatalabs/FreeInsuranceClaims100M --max-rows 500000
 python -m app.ml.train_isolation_forest  --source ziadatalabs/FreeInsuranceClaims100M
 python -m app.ml.train_provider_model    --items-csv datasets/billing_items.csv     # item-level peer prices (recommended)
 ```
+
+Artefacts trained on the synthetic generator are stamped `"synthetic": true` with a caveat on
+`/api/v1/models/status`: such a model has learned that generator and nothing about real leakage.
+Retrain on labelled production claims before relying on either model's output. On the bundled data
+CatBoost reaches test PR-AUC 0.254 against a 0.093 positive rate (a 2.7x lift, validation and test
+within 0.003 of each other) - a real but modest signal, which is why it stays a low-weight input.
 Each script inspects the real schema first (`reports/schema_report.json`), maps columns by name, excludes leakage columns (status/resolution/payout/…), splits chronologically when a date exists, and writes metrics + reports to `reports/` and artefacts to `ml_models/`. CatBoost is saved as native `.cbm` with a metadata JSON. **Domain caveat:** the public dataset is generic; validate on your own labelled claims before relying on ML output.

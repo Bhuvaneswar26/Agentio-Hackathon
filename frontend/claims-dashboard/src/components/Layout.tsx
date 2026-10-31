@@ -1,6 +1,7 @@
 import {
   Activity,
   Bell,
+  BookOpen,
   FileSearch,
   LayoutDashboard,
   ScanLine,
@@ -16,6 +17,7 @@ import type { Role } from '../types'
 const nav = [
   { to: '/', label: 'Command center', icon: LayoutDashboard },
   { to: '/ingest', label: 'Ingest & extract', icon: ScanLine },
+  { to: '/policy', label: 'Policy reader', icon: BookOpen },
   { to: '/alerts', label: 'Fraud & leakage', icon: ShieldAlert },
   { to: '/claims', label: 'Claims workspace', icon: FileSearch },
   { to: '/providers', label: 'Provider intel', icon: Users },

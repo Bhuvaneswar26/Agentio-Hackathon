@@ -1,0 +1,25 @@
+{
+  "claimId": "CLM-TEST-102",
+  "policyNumber": "HL-55120",
+  "claimant": "Sunita Rao",
+  "incidentDate": "2026-09-20",
+  "filedDate": "2026-09-25",
+  "domain": "Health",
+  "claimType": "Hospitalisation",
+  "requestedAmount": 60000,
+  "proposedSettlement": 60000,
+  "provider": "Lakeview Hospital",
+  "city": "Hyderabad",
+  "deductible": 5000,
+  "copay": 10,
+  "validFrom": "2025-01-01",
+  "validUntil": "2025-12-31",
+  "sumInsured": 300000,
+  "policyRules": [
+    { "id": "PR-COV", "name": "Hospitalisation coverage", "clause": "In-patient hospitalisation is covered.", "type": "coverage" }
+  ],
+  "invoiceLines": [
+    { "description": "ICU charges 2 days", "code": "ICU-01", "quantity": 2, "unitPrice": 10000, "amount": 30000, "invoice": "INV-5512" },
+    { "description": "Surgery OT charges", "code": "SURG-07", "quantity": 1, "unitPrice": 30000, "amount": 30000, "invoice": "INV-5512" }
+  ]
+}

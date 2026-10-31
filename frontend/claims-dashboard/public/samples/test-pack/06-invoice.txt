@@ -1,0 +1,12 @@
+CITY CARE HOSPITAL - TAX INVOICE
+Hospital: City Care Hospital
+Patient: Kavita Desai
+Claim ID: CLM-70001
+Policy: HL-48213
+Invoice: INV-7001
+Claim date: 2026-08-02
+Room rent deluxe 9000
+Pharmacy medicines 1500
+Blood test CBC 800
+Blood test CBC 800
+Total: 12100

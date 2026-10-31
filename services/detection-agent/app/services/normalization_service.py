@@ -48,6 +48,9 @@ class HistoryRecord:
     invoice_date: date | None
     total: Decimal | None
     items: list[dict[str, Any]] = field(default_factory=list)
+    # The record as supplied. Related-party detection reads identifier fields (payee account,
+    # contact, address) that have no place in the typed schema but are what links two claimants.
+    raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_raw(cls, raw: dict[str, Any], source: str) -> "HistoryRecord":
@@ -67,6 +70,7 @@ class HistoryRecord:
             invoice_date=parse_date(g("invoice.invoice_date", "invoice_date")),
             total=parse_decimal(g("invoice.total_amount", "total_amount", "requested_amount", "amount")),
             items=[i for i in items if isinstance(i, dict)] if isinstance(items, list) else [],
+            raw=raw,
         )
 
 

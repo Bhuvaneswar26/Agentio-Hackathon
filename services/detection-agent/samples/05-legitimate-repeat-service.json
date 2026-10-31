@@ -1,0 +1,154 @@
+{
+  "_scenario_notes": "Scenario 5, first half. Four identical physiotherapy lines that are four genuine sessions on four different dates. These must land in legitimate_repeats, not in duplicates.",
+  "_expected": {
+    "must_not_contain_categories": [
+      "DUPLICATE_LINE_ITEM",
+      "DUPLICATE_INVOICE"
+    ],
+    "min_legitimate_repeats": 1
+  },
+  "claim": {
+    "claim_id": "CLM-2025-0905",
+    "policy_number": "POL-HLT-2025-00412",
+    "claim_type": "HEALTH",
+    "claimant": {
+      "name": "Rahul Sharma",
+      "age": 46,
+      "patient_id": "PAT-1001"
+    },
+    "provider": {
+      "provider_id": "CLN-3001",
+      "name": "Lakeview Physiotherapy Clinic",
+      "provider_type": "HOSPITAL",
+      "location": "Hyderabad"
+    },
+    "incident": {
+      "incident_date": "2025-10-06"
+    },
+    "invoice": {
+      "invoice_id": "INV-PT-77010",
+      "invoice_date": "2025-10-14",
+      "total_amount": 3200,
+      "currency": "INR",
+      "items": [
+        {
+          "item_id": "ITEM-001",
+          "description": "Physiotherapy session",
+          "service_code": "PHYSIO-01",
+          "quantity": 1,
+          "unit_price": 800,
+          "total_amount": 800,
+          "service_date": "2025-10-06"
+        },
+        {
+          "item_id": "ITEM-002",
+          "description": "Physiotherapy session",
+          "service_code": "PHYSIO-01",
+          "quantity": 1,
+          "unit_price": 800,
+          "total_amount": 800,
+          "service_date": "2025-10-08"
+        },
+        {
+          "item_id": "ITEM-003",
+          "description": "Physiotherapy session",
+          "service_code": "PHYSIO-01",
+          "quantity": 1,
+          "unit_price": 800,
+          "total_amount": 800,
+          "service_date": "2025-10-10"
+        },
+        {
+          "item_id": "ITEM-004",
+          "description": "Physiotherapy session",
+          "service_code": "PHYSIO-01",
+          "quantity": 1,
+          "unit_price": 800,
+          "total_amount": 800,
+          "service_date": "2025-10-13"
+        }
+      ]
+    },
+    "requested_amount": 3200,
+    "proposed_settlement": 3200
+  },
+  "policy": {
+    "policy_number": "POL-HLT-2025-00412",
+    "policy_type": "HEALTH",
+    "valid_from": "2025-04-01",
+    "valid_until": "2026-03-31",
+    "inception_date": "2023-04-01",
+    "sum_insured": 500000,
+    "deductible": 10000,
+    "copayment_percentage": 10,
+    "coverage": [
+      {
+        "category": "ROOM_RENT",
+        "covered": true,
+        "daily_limit": 5000,
+        "clause_reference": "Clause 2.1"
+      },
+      {
+        "category": "ICU",
+        "covered": true,
+        "daily_limit": 10000,
+        "clause_reference": "Clause 2.2"
+      },
+      {
+        "category": "DIAGNOSTICS",
+        "covered": true,
+        "limit": 25000,
+        "clause_reference": "Clause 2.3"
+      },
+      {
+        "category": "SURGERY",
+        "covered": true,
+        "clause_reference": "Clause 2.0"
+      },
+      {
+        "category": "PHARMACY",
+        "covered": true,
+        "clause_reference": "Clause 2.0"
+      },
+      {
+        "category": "DOCTOR_FEES",
+        "covered": true,
+        "clause_reference": "Clause 2.0"
+      },
+      {
+        "category": "AMBULANCE",
+        "covered": true,
+        "limit": 2000,
+        "clause_reference": "Clause 2.4"
+      }
+    ],
+    "exclusions": [
+      {
+        "category": "CONSUMABLES",
+        "description": "Gloves, syringes, disposable gowns and masks",
+        "clause_reference": "Clause 3.1"
+      }
+    ],
+    "sublimits": [
+      {
+        "category": "ROOM_RENT",
+        "daily_limit": 5000,
+        "clause_reference": "Clause 2.1"
+      },
+      {
+        "category": "ICU",
+        "daily_limit": 10000,
+        "clause_reference": "Clause 2.2"
+      },
+      {
+        "category": "DIAGNOSTICS",
+        "limit": 25000,
+        "clause_reference": "Clause 2.3"
+      }
+    ]
+  },
+  "history": {
+    "previous_claims": [],
+    "related_invoices": []
+  }
+}

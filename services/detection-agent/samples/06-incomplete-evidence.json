@@ -1,0 +1,45 @@
+{
+  "_scenario_notes": "Scenario 5, second half. A consolidated line with no breakdown, no dates and a policy with no stated terms. The right behaviour is to ask for information, not to invent a limit breach: expect MISSING_INFORMATION findings and zero calculated leakage.",
+  "_expected": {
+    "calculated_leakage": 0,
+    "must_contain_categories": [
+      "MISSING_INFORMATION"
+    ]
+  },
+  "claim": {
+    "claim_id": "CLM-2025-0906",
+    "policy_number": "POL-HLT-2025-00412",
+    "claim_type": "HEALTH",
+    "claimant": {
+      "name": "Meera Iyer"
+    },
+    "provider": {
+      "name": "City Care Hospital"
+    },
+    "incident": {},
+    "invoice": {
+      "invoice_id": "INV-CC-5500",
+      "total_amount": 47000,
+      "currency": "INR",
+      "items": [
+        {
+          "item_id": "ITEM-001",
+          "description": "Hospital charges - consolidated",
+          "service_code": "",
+          "quantity": 1,
+          "unit_price": 47000,
+          "total_amount": 47000
+        }
+      ]
+    },
+    "requested_amount": 47000
+  },
+  "policy": {
+    "policy_number": "POL-HLT-2025-00412",
+    "policy_type": "HEALTH"
+  },
+  "history": {
+    "previous_claims": [],
+    "related_invoices": []
+  }
+}

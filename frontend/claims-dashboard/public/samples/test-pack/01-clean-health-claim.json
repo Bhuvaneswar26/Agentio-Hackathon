@@ -1,0 +1,25 @@
+{
+  "claimId": "CLM-TEST-101",
+  "policyNumber": "HL-90001",
+  "claimant": "Rahul Mehta",
+  "incidentDate": "2026-08-02",
+  "filedDate": "2026-08-05",
+  "domain": "Health",
+  "claimType": "Hospitalisation",
+  "requestedAmount": 9000,
+  "proposedSettlement": 7200,
+  "provider": "City Care Hospital",
+  "city": "Pune",
+  "deductible": 0,
+  "copay": 20,
+  "validFrom": "2026-01-01",
+  "validUntil": "2026-12-31",
+  "sumInsured": 500000,
+  "policyRules": [
+    { "id": "PR-ROOM", "name": "Room rent sub-limit", "clause": "Room rent payable up to ₹5,000 per day.", "type": "sublimit", "value": 5000, "unit": "per day" },
+    { "id": "PR-COV", "name": "Hospitalisation coverage", "clause": "In-patient hospitalisation is covered.", "type": "coverage" }
+  ],
+  "invoiceLines": [
+    { "description": "Room rent 2 days", "code": "ROOM-STD", "quantity": 2, "unitPrice": 4500, "amount": 9000, "invoice": "INV-9001" }
+  ]
+}

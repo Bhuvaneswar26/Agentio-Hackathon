@@ -7,6 +7,7 @@ from typing import Any
 
 from app.core.config import Settings
 from app.core.utils import ZERO, norm_text, parse_date, parse_decimal, to_money
+from app.engines.duplicate_engine import DuplicateAnalysis
 from app.engines.policy_engine import PolicyResult
 from app.schemas.input_schema import AnalyzeRequest
 from app.services.normalization_service import ClaimContext
@@ -18,6 +19,8 @@ STRATEGIES: dict[str, list[str]] = {
     "CAP_THEN_DEDUCTIBLE_THEN_COPAY": ["SUM_INSURED_CAP", "DEDUCTIBLE", "COPAY"],
     "CAP_THEN_COPAY_THEN_DEDUCTIBLE": ["SUM_INSURED_CAP", "COPAY", "DEDUCTIBLE"],
 }
+# Duplicate matches certain enough to be removed from the payable amount (mirrors CALCULATED duplicate findings).
+PAYABLE_DUPLICATE_TYPES = {"EXACT_INVOICE", "DUPLICATE_LINE_ITEM", "CROSS_CLAIM_ITEM"}
 
 
 def resolve_strategy(spec: str | list[str] | None, default: str) -> tuple[str, list[str]]:
@@ -42,6 +45,7 @@ class SettlementResult:
     deductible_applied: Decimal
     copayment: Decimal
     sum_insured_reduction: Decimal
+    duplicate_deduction: Decimal
     expected_settlement: Decimal
     proposed_settlement: Decimal | None
     discrepancy: Decimal | None
@@ -73,7 +77,15 @@ class SettlementEngine:
     def __init__(self, settings: Settings):
         self.s = settings
 
-    def calculate(self, ctx: ClaimContext, pol: PolicyResult) -> SettlementResult:
+    @staticmethod
+    def duplicate_deduction(pol: PolicyResult, dup: DuplicateAnalysis | None) -> Decimal:
+        """Policy-allowed amount of lines that are exact duplicates; a confirmed duplicate is not payable."""
+        if dup is None:
+            return ZERO
+        ids = {i for m in dup.matches if m.exact and m.match_type in PAYABLE_DUPLICATE_TYPES for i in m.item_ids}
+        return to_money(sum((r.allowed for r in pol.items if r.item_id in ids), ZERO))
+
+    def calculate(self, ctx: ClaimContext, pol: PolicyResult, dup: DuplicateAnalysis | None = None) -> SettlementResult:
         req, policy = ctx.request, ctx.request.policy
         name, order = resolve_strategy(req.options.settlement_strategy or policy.settlement_strategy,
                                        self.s.default_settlement_strategy)
@@ -82,6 +94,11 @@ class SettlementEngine:
         ded = cop = cap_red = ZERO
         steps: list[dict[str, Any]] = [{"step": "ELIGIBLE_AMOUNT", "before": None, "after": amount,
                                         "note": "Sum of line amounts allowed after exclusions, limits and waiting periods"}]
+        dup_ded = min(self.duplicate_deduction(pol, dup), amount)
+        if dup_ded > 0:
+            steps.append({"step": "DUPLICATE_DEDUCTION", "before": amount, "after": amount - dup_ded,
+                          "note": "Allowed amount of exact-duplicate lines/invoices removed from the payable amount"})
+            amount -= dup_ded
         for step in order:
             before = amount
             if step == "DEDUCTIBLE":
@@ -109,6 +126,6 @@ class SettlementEngine:
             strategy=name, gross_invoice_amount=gross, eligible_amount=to_money(pol.eligible),
             excluded_amount=to_money(pol.excluded), sublimit_adjustment=to_money(pol.sublimit_adjustment),
             deductible_applied=to_money(ded), copayment=to_money(cop), sum_insured_reduction=to_money(cap_red),
-            expected_settlement=expected, proposed_settlement=proposed,
+            duplicate_deduction=to_money(dup_ded), expected_settlement=expected, proposed_settlement=proposed,
             discrepancy=(to_money(proposed - expected) if proposed is not None else None),
             remaining_sum_insured=remaining, previously_used_sum_insured=used, steps=steps)

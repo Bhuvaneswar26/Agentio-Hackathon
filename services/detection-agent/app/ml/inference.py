@@ -23,6 +23,21 @@ DOMAIN_WARNING = ("CatBoost/IsolationForest are trained on a generic insurance-c
                   "not transfer to Indian health-insurance billing.")
 
 
+def _provenance(dataset: str | None) -> dict[str, Any]:
+    """Flag artefacts trained on the bundled synthetic generator.
+
+    A model trained on `generate_synthetic_dataset` has only learned that generator. Surfacing it
+    on /api/v1/models/status means an operator cannot mistake a demo artefact for a validated one.
+    """
+    name = str(dataset or "")
+    if "synthetic" in name.lower():
+        return {"dataset": name, "synthetic": True,
+                "caveat": ("Trained on the bundled synthetic generator, whose labels come from a known "
+                           "process. Exercises the inference path for demos; carries no evidence about "
+                           "real leakage. Retrain on labelled production claims before relying on it.")}
+    return {"dataset": name} if name else {}
+
+
 class ModelRegistry:
     def __init__(self, model_dir: Path):
         self.model_dir = Path(model_dir)
@@ -38,7 +53,8 @@ class ModelRegistry:
 
                 self.catboost = CatBoostClassifier().load_model(str(cbm))
                 self.cb_meta = json.loads(meta.read_text())
-                self.status["catboost"] = {"status": "AVAILABLE", "version": self.cb_meta.get("version")}
+                self.status["catboost"] = {"status": "AVAILABLE", "version": self.cb_meta.get("version"),
+                                           **_provenance(self.cb_meta.get("dataset"))}
             except Exception as exc:
                 self.status["catboost"] = {"status": "UNAVAILABLE", "reason": f"load error: {exc}"}
         else:
@@ -49,7 +65,8 @@ class ModelRegistry:
                 import joblib
 
                 self.if_bundle = joblib.load(ifp)
-                self.status["isolation_forest"] = {"status": "AVAILABLE", "version": self.if_bundle.get("version")}
+                self.status["isolation_forest"] = {"status": "AVAILABLE", "version": self.if_bundle.get("version"),
+                                                   **_provenance(self.if_bundle.get("dataset"))}
             except Exception as exc:
                 self.status["isolation_forest"] = {"status": "UNAVAILABLE", "reason": f"load error: {exc}"}
         else:

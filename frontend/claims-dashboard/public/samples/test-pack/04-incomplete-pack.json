@@ -1,0 +1,9 @@
+{
+  "claimId": "CLM-TEST-104",
+  "policyNumber": "HL-77000",
+  "claimant": "Arjun Verma",
+  "incidentDate": "2026-10-01",
+  "domain": "Health",
+  "requestedAmount": 15000,
+  "provider": "Metro Clinic"
+}

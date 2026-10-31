@@ -1,0 +1,155 @@
+{
+  "_scenario_notes": "Control case. Everything is within policy, the settlement maths is correct, and nothing is duplicated. A detector that flags this one is producing false positives.",
+  "_expected": {
+    "calculated_leakage": 0,
+    "expected_settlement": 9900.0,
+    "discrepancy": 0,
+    "must_not_contain_categories": [
+      "DUPLICATE_INVOICE",
+      "EXCLUDED_SERVICE",
+      "POLICY_LIMIT_BREACH"
+    ]
+  },
+  "claim": {
+    "claim_id": "CLM-2025-0900",
+    "policy_number": "POL-HLT-2025-00412",
+    "claim_type": "HEALTH",
+    "claimant": {
+      "name": "Rahul Sharma",
+      "age": 46,
+      "patient_id": "PAT-1001"
+    },
+    "provider": {
+      "provider_id": "HSP-2001",
+      "name": "Lakeview Multispeciality Hospital",
+      "provider_type": "HOSPITAL",
+      "location": "Hyderabad"
+    },
+    "incident": {
+      "incident_date": "2025-09-02",
+      "admission_date": "2025-09-02",
+      "discharge_date": "2025-09-05"
+    },
+    "invoice": {
+      "invoice_id": "INV-LV-90001",
+      "invoice_date": "2025-09-05",
+      "total_amount": 21000,
+      "currency": "INR",
+      "items": [
+        {
+          "item_id": "ITEM-001",
+          "description": "Room Charges - Semi Private",
+          "service_code": "ROOM-GEN",
+          "quantity": 3,
+          "unit_price": 4500,
+          "total_amount": 13500
+        },
+        {
+          "item_id": "ITEM-002",
+          "description": "Complete Blood Count",
+          "service_code": "DIAG-CBC",
+          "quantity": 1,
+          "unit_price": 600,
+          "total_amount": 600
+        },
+        {
+          "item_id": "ITEM-003",
+          "description": "Consultant Visit",
+          "service_code": "DOC-CONS",
+          "quantity": 3,
+          "unit_price": 900,
+          "total_amount": 2700
+        },
+        {
+          "item_id": "ITEM-004",
+          "description": "Pharmacy - in patient medication",
+          "service_code": "PHARM-001",
+          "quantity": 14,
+          "unit_price": 300,
+          "total_amount": 4200
+        }
+      ]
+    },
+    "requested_amount": 21000,
+    "proposed_settlement": 9900.0
+  },
+  "policy": {
+    "policy_number": "POL-HLT-2025-00412",
+    "policy_type": "HEALTH",
+    "valid_from": "2025-04-01",
+    "valid_until": "2026-03-31",
+    "inception_date": "2023-04-01",
+    "sum_insured": 500000,
+    "deductible": 10000,
+    "copayment_percentage": 10,
+    "coverage": [
+      {
+        "category": "ROOM_RENT",
+        "covered": true,
+        "daily_limit": 5000,
+        "clause_reference": "Clause 2.1"
+      },
+      {
+        "category": "ICU",
+        "covered": true,
+        "daily_limit": 10000,
+        "clause_reference": "Clause 2.2"
+      },
+      {
+        "category": "DIAGNOSTICS",
+        "covered": true,
+        "limit": 25000,
+        "clause_reference": "Clause 2.3"
+      },
+      {
+        "category": "SURGERY",
+        "covered": true,
+        "clause_reference": "Clause 2.0"
+      },
+      {
+        "category": "PHARMACY",
+        "covered": true,
+        "clause_reference": "Clause 2.0"
+      },
+      {
+        "category": "DOCTOR_FEES",
+        "covered": true,
+        "clause_reference": "Clause 2.0"
+      },
+      {
+        "category": "AMBULANCE",
+        "covered": true,
+        "limit": 2000,
+        "clause_reference": "Clause 2.4"
+      }
+    ],
+    "exclusions": [
+      {
+        "category": "CONSUMABLES",
+        "description": "Gloves, syringes, disposable gowns and masks",
+        "clause_reference": "Clause 3.1"
+      }
+    ],
+    "sublimits": [
+      {
+        "category": "ROOM_RENT",
+        "daily_limit": 5000,
+        "clause_reference": "Clause 2.1"
+      },
+      {
+        "category": "ICU",
+        "daily_limit": 10000,
+        "clause_reference": "Clause 2.2"
+      },
+      {
+        "category": "DIAGNOSTICS",
+        "limit": 25000,
+        "clause_reference": "Clause 2.3"
+      }
+    ]
+  },
+  "history": {
+    "previous_claims": [],
+    "related_invoices": []
+  }
+}

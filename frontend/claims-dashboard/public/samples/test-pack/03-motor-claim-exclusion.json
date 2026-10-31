@@ -1,0 +1,21 @@
+{
+  "claimId": "CLM-TEST-103",
+  "policyNumber": "MT-55102",
+  "claimant": "Priya Nair",
+  "incidentDate": "2026-07-10",
+  "filedDate": "2026-07-12",
+  "domain": "Motor",
+  "claimType": "Own damage",
+  "requestedAmount": 42000,
+  "proposedSettlement": 42000,
+  "provider": "Speedy Garage",
+  "city": "Chennai",
+  "deductible": 2000,
+  "policyRules": [
+    { "id": "PR-TYRE", "name": "Tyres exclusion", "clause": "Tyre wear and replacement is excluded.", "type": "exclusion" }
+  ],
+  "invoiceLines": [
+    { "description": "Front bumper replacement", "code": "BODY-01", "amount": 30000, "invoice": "GAR-8841" },
+    { "description": "Tyres replacement", "code": "TYRE-02", "amount": 12000, "invoice": "GAR-8841" }
+  ]
+}

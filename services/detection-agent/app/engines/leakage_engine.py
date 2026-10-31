@@ -221,15 +221,19 @@ class LeakageEngine:
                 out.append(FindingDraft(cat, sev, desc, m.rule_id, "UNQUANTIFIED", comp, m.issue_key,
                                         evidence=ev_list, confidence=m.score))
 
-        # 5. billing anomalies
+        # 5. billing anomalies and related-party signals
         for a in anomalies.anomalies:
             leak = None
             if a.leakage is not None and a.item_id:
                 leak = led.apply(a.item_id, a.leakage)
             it = items.get(a.item_id) if a.item_id else None
-            out.append(FindingDraft("BILLING_ANOMALY", a.severity, a.description, a.rule_id, a.amount_type, a.component,
+            related = a.component == "related_party"
+            out.append(FindingDraft("RELATED_PARTY_PATTERN" if related else "BILLING_ANOMALY",
+                                    a.severity, a.description, a.rule_id, a.amount_type, a.component,
                                     a.issue_key, a.item_id, it.total if it else None, None, leak,
-                                    evidence=[ev(a.anomaly_type, "anomaly_engine", **a.evidence)]))
+                                    evidence=[ev(a.anomaly_type,
+                                                 "related_party_engine" if related else "anomaly_engine",
+                                                 **a.evidence)]))
 
         # 6. data integrity / missing information
         handled = {"ITEM_ARITHMETIC_MISMATCH", "INVOICE_TOTAL_MISMATCH", "REQUESTED_AMOUNT_MISMATCH"}

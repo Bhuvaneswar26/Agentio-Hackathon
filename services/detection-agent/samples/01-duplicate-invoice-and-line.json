@@ -1,0 +1,213 @@
+{
+  "_scenario_notes": "Scenario 1. Two independent duplicate signals: the MRI line appears twice on the same service date within this invoice, and the whole invoice was already claimed under CLM-2025-0855.",
+  "_expected": {
+    "min_calculated_leakage": 9000,
+    "must_contain_categories": [
+      "DUPLICATE_INVOICE",
+      "DUPLICATE_LINE_ITEM"
+    ]
+  },
+  "claim": {
+    "claim_id": "CLM-2025-0901",
+    "policy_number": "POL-HLT-2025-00412",
+    "claim_type": "HEALTH",
+    "claimant": {
+      "name": "Rahul Sharma",
+      "age": 46,
+      "patient_id": "PAT-1001"
+    },
+    "provider": {
+      "provider_id": "HSP-2001",
+      "name": "Lakeview Multispeciality Hospital",
+      "provider_type": "HOSPITAL",
+      "location": "Hyderabad"
+    },
+    "incident": {
+      "incident_date": "2025-08-10",
+      "admission_date": "2025-08-10",
+      "discharge_date": "2025-08-12"
+    },
+    "invoice": {
+      "invoice_id": "INV-LV-90120",
+      "invoice_date": "2025-08-12",
+      "total_amount": 29800,
+      "currency": "INR",
+      "items": [
+        {
+          "item_id": "ITEM-001",
+          "description": "Room Charges - Private",
+          "service_code": "ROOM-PVT",
+          "quantity": 2,
+          "unit_price": 5000,
+          "total_amount": 10000,
+          "service_date": "2025-08-11"
+        },
+        {
+          "item_id": "ITEM-002",
+          "description": "MRI Brain with contrast",
+          "service_code": "DIAG-MRI",
+          "quantity": 1,
+          "unit_price": 9000,
+          "total_amount": 9000,
+          "service_date": "2025-08-11"
+        },
+        {
+          "item_id": "ITEM-003",
+          "description": "MRI Brain with contrast",
+          "service_code": "DIAG-MRI",
+          "quantity": 1,
+          "unit_price": 9000,
+          "total_amount": 9000,
+          "service_date": "2025-08-11"
+        },
+        {
+          "item_id": "ITEM-004",
+          "description": "Consultant Visit",
+          "service_code": "DOC-CONS",
+          "quantity": 2,
+          "unit_price": 900,
+          "total_amount": 1800,
+          "service_date": "2025-08-11"
+        }
+      ]
+    },
+    "requested_amount": 29800,
+    "proposed_settlement": 29800
+  },
+  "policy": {
+    "policy_number": "POL-HLT-2025-00412",
+    "policy_type": "HEALTH",
+    "valid_from": "2025-04-01",
+    "valid_until": "2026-03-31",
+    "inception_date": "2023-04-01",
+    "sum_insured": 500000,
+    "deductible": 10000,
+    "copayment_percentage": 10,
+    "coverage": [
+      {
+        "category": "ROOM_RENT",
+        "covered": true,
+        "daily_limit": 5000,
+        "clause_reference": "Clause 2.1"
+      },
+      {
+        "category": "ICU",
+        "covered": true,
+        "daily_limit": 10000,
+        "clause_reference": "Clause 2.2"
+      },
+      {
+        "category": "DIAGNOSTICS",
+        "covered": true,
+        "limit": 25000,
+        "clause_reference": "Clause 2.3"
+      },
+      {
+        "category": "SURGERY",
+        "covered": true,
+        "clause_reference": "Clause 2.0"
+      },
+      {
+        "category": "PHARMACY",
+        "covered": true,
+        "clause_reference": "Clause 2.0"
+      },
+      {
+        "category": "DOCTOR_FEES",
+        "covered": true,
+        "clause_reference": "Clause 2.0"
+      },
+      {
+        "category": "AMBULANCE",
+        "covered": true,
+        "limit": 2000,
+        "clause_reference": "Clause 2.4"
+      }
+    ],
+    "exclusions": [
+      {
+        "category": "CONSUMABLES",
+        "description": "Gloves, syringes, disposable gowns and masks",
+        "clause_reference": "Clause 3.1"
+      }
+    ],
+    "sublimits": [
+      {
+        "category": "ROOM_RENT",
+        "daily_limit": 5000,
+        "clause_reference": "Clause 2.1"
+      },
+      {
+        "category": "ICU",
+        "daily_limit": 10000,
+        "clause_reference": "Clause 2.2"
+      },
+      {
+        "category": "DIAGNOSTICS",
+        "limit": 25000,
+        "clause_reference": "Clause 2.3"
+      }
+    ]
+  },
+  "history": {
+    "previous_claims": [
+      {
+        "claim_id": "CLM-2025-0855",
+        "policy_number": "POL-HLT-2025-00412",
+        "claimant": {
+          "name": "Rahul Sharma",
+          "patient_id": "PAT-1001"
+        },
+        "provider": {
+          "provider_id": "HSP-2001",
+          "name": "Lakeview Multispeciality Hospital"
+        },
+        "incident_date": "2025-08-10",
+        "invoice": {
+          "invoice_id": "INV-LV-90120",
+          "invoice_date": "2025-08-12",
+          "total_amount": 29800,
+          "items": [
+            {
+              "item_id": "ITEM-001",
+              "description": "Room Charges - Private",
+              "service_code": "ROOM-PVT",
+              "quantity": 2,
+              "unit_price": 5000,
+              "total_amount": 10000,
+              "service_date": "2025-08-11"
+            },
+            {
+              "item_id": "ITEM-002",
+              "description": "MRI Brain with contrast",
+              "service_code": "DIAG-MRI",
+              "quantity": 1,
+              "unit_price": 9000,
+              "total_amount": 9000,
+              "service_date": "2025-08-11"
+            },
+            {
+              "item_id": "ITEM-003",
+              "description": "MRI Brain with contrast",
+              "service_code": "DIAG-MRI",
+              "quantity": 1,
+              "unit_price": 9000,
+              "total_amount": 9000,
+              "service_date": "2025-08-11"
+            },
+            {
+              "item_id": "ITEM-004",
+              "description": "Consultant Visit",
+              "service_code": "DOC-CONS",
+              "quantity": 2,
+              "unit_price": 900,
+              "total_amount": 1800,
+              "service_date": "2025-08-11"
+            }
+          ]
+        }
+      }
+    ],
+    "related_invoices": []
+  }
+}

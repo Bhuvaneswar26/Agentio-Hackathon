@@ -6,20 +6,51 @@ This repository is the shared monorepo for the hackathon products. Each team sho
 
 - **ClaimsGuard dashboard:** [frontend/claims-dashboard](frontend/claims-dashboard/README.md) — claims intake, OCR/extraction, detection payload preview, investigation dashboards, alerts, and supervisor review.
 
-- **Detection engine:** [services/detection-agent](services/detection-agent/README.md) — FastAPI + PostgreSQL service: policy mapping, rule engine, duplicate detection, billing anomalies, CatBoost / Isolation Forest signals, settlement calculation, risk scoring, explainable findings and audit trail.
+- **Detection engine:** [services/detection-agent](services/detection-agent/README.md) — FastAPI + PostgreSQL service: policy mapping, rule engine, duplicate detection, billing anomalies, related-party graph, policy-document RAG (clause retrieval + cited term extraction), CatBoost / Isolation Forest signals, settlement calculation, risk scoring, explainable findings and audit trail.
 
 ## Run everything locally
 
 ```bash
 # 1. engine (API on http://localhost:8000, docs at /docs)
-cd services/detection-agent && docker compose up --build
-#    or without Docker: pip install -r requirements.txt && CG_DATABASE_URL=sqlite:///./dev.db uvicorn app.main:app --reload
+cd services/detection-agent
+docker compose up --build
+#  or without Docker (Python 3.10+ required):
+#    pip install -r requirements.txt
+#    cp .env.example .env     # then set CG_DATABASE_URL=sqlite:///./dev.db to skip Postgres
+#    python -m app.ml.generate_synthetic_dataset --rows 60000   # one-off, for the ML models
+#    python -m app.ml.train_catboost         --source datasets/synthetic_claims.csv --max-rows 60000
+#    python -m app.ml.train_isolation_forest --source datasets/synthetic_claims.csv --max-rows 60000
+#    python -m app.ml.train_provider_model   --items-csv datasets/billing_items.csv --source datasets/synthetic_claims.csv
+#    uvicorn app.main:app --reload
 
 # 2. dashboard (http://localhost:5173)
 cd frontend/claims-dashboard && npm install && npm run dev
 ```
 
-On the dashboard open **Ingest**, load the health sample and press **Analyse with ClaimsGuard engine**. The dashboard posts to `http://localhost:8000/v1/detect` (override with `VITE_AGENT_URL` or the *Agent connection* page).
+Without the training step the engine still runs; the two ML models simply report `UNAVAILABLE` and
+the rule engines carry the analysis on their own.
+
+### Check it works
+
+```bash
+cd services/detection-agent
+pytest -q                          # 97 tests
+python samples/verify_samples.py   # all 5 leakage scenarios + a clean control + the RAG round trip
+```
+
+`samples/` has one fixture per leakage scenario, each asserting its own expected outcome — see the
+[engine README](services/detection-agent/README.md#samples-and-verification).
+
+### Try it in the dashboard
+
+- **Ingest** — load the health sample and press *Analyse with ClaimsGuard engine*. The dashboard
+  posts to `http://localhost:8000/v1/detect` (override with `VITE_AGENT_URL` or the *Agent
+  connection* page).
+- **Policy reader** — upload `services/detection-agent/samples/policy-document.txt` (or any policy
+  PDF/scan; OCR runs in the browser). The engine retrieves the governing clauses and extracts the
+  deductible, co-payment, sum insured, sub-limits, exclusions and waiting periods, each cited back
+  to its clause. Press *Use for next ingest* and the next claim pack is assessed against those
+  clauses. Terms the document never states are listed as unresolved rather than assumed.
 
 ## Repository layout
 

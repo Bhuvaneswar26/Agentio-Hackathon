@@ -232,8 +232,9 @@ def to_frontend_claim(p: DetectionPayloadIn, analysis: dict[str, Any] | None, mi
                               "leakageAmount": 0, "engine": "rules"}],
                 "notes": "ClaimsGuard engine could not assess this pack; see findings."}
     findings = [_frontend_finding(f) for f in analysis["findings"]]
-    related = sorted({m["record"].get("claim_id") for m in analysis["duplicate_analysis"].get("matches", [])
-                      if m["record"].get("claim_id")})
+    own_id = analysis.get("claim", {}).get("claim_id")
+    related = sorted({cid for m in analysis["duplicate_analysis"].get("matches", [])
+                      if (cid := m["record"].get("claim_id")) and cid != own_id})
     has_rules = bool(p.policy.rules or p.policy.deductible is not None or p.policy.copayPercent is not None)
     return {**base, "expectedSettlement": fin.get("expected_settlement") or 0,
             "confirmedLeakage": summ.get("calculated_leakage") or 0, "potentialLeakage": summ.get("estimated_leakage") or 0,

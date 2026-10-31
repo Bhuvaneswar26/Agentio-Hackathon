@@ -1,0 +1,83 @@
+{
+  "00-clean-claim-no-leakage": {
+    "file": "00-clean-claim-no-leakage.json",
+    "notes": "Control case. Everything is within policy, the settlement maths is correct, and nothing is duplicated. A detector that flags this one is producing false positives.",
+    "expected": {
+      "calculated_leakage": 0,
+      "expected_settlement": 9900.0,
+      "discrepancy": 0,
+      "must_not_contain_categories": [
+        "DUPLICATE_INVOICE",
+        "EXCLUDED_SERVICE",
+        "POLICY_LIMIT_BREACH"
+      ]
+    }
+  },
+  "01-duplicate-invoice-and-line": {
+    "file": "01-duplicate-invoice-and-line.json",
+    "notes": "Scenario 1. Two independent duplicate signals: the MRI line appears twice on the same service date within this invoice, and the whole invoice was already claimed under CLM-2025-0855.",
+    "expected": {
+      "min_calculated_leakage": 9000,
+      "must_contain_categories": [
+        "DUPLICATE_INVOICE",
+        "DUPLICATE_LINE_ITEM"
+      ]
+    }
+  },
+  "02-policy-limits-and-exclusions": {
+    "file": "02-policy-limits-and-exclusions.json",
+    "notes": "Scenario 2. Three separable breaches: room rent 6000 over the per-day cap across 3 days, 2400 of excluded consumables, and 3000 over the diagnostics annual sub-limit.",
+    "expected": {
+      "min_calculated_leakage": 11400,
+      "must_contain_categories": [
+        "POLICY_LIMIT_BREACH",
+        "EXCLUDED_SERVICE"
+      ]
+    }
+  },
+  "03-settlement-miscalculation": {
+    "file": "03-settlement-miscalculation.json",
+    "notes": "Scenario 3. Every line is payable; the error is arithmetic. The handler proposed the gross 68000 without applying the 10000 deductible or the 10% co-payment. Expected settlement is 52200.0.",
+    "expected": {
+      "expected_settlement": 52200.0,
+      "discrepancy": 15800.0,
+      "must_contain_categories": [
+        "SETTLEMENT_DISCREPANCY"
+      ]
+    }
+  },
+  "04-provider-billing-and-related-party": {
+    "file": "04-provider-billing-and-related-party.json",
+    "notes": "Scenario 4. The MRI is billed at 26,000 where seven peer invoices at the same hospital sit near 9,200 (an ESTIMATED amount, not a confirmed one). Separately, CLM-2025-0877 belongs to a different claimant but shares this claim's payee bank account and the same incident date and provider - a related-party lead for investigation, explicitly not a fraud conclusion.",
+    "expected": {
+      "must_contain_categories": [
+        "BILLING_ANOMALY",
+        "RELATED_PARTY_PATTERN"
+      ],
+      "must_contain_rule_ids": [
+        "RULE-RP-001"
+      ]
+    }
+  },
+  "05-legitimate-repeat-service": {
+    "file": "05-legitimate-repeat-service.json",
+    "notes": "Scenario 5, first half. Four identical physiotherapy lines that are four genuine sessions on four different dates. These must land in legitimate_repeats, not in duplicates.",
+    "expected": {
+      "must_not_contain_categories": [
+        "DUPLICATE_LINE_ITEM",
+        "DUPLICATE_INVOICE"
+      ],
+      "min_legitimate_repeats": 1
+    }
+  },
+  "06-incomplete-evidence": {
+    "file": "06-incomplete-evidence.json",
+    "notes": "Scenario 5, second half. A consolidated line with no breakdown, no dates and a policy with no stated terms. The right behaviour is to ask for information, not to invent a limit breach: expect MISSING_INFORMATION findings and zero calculated leakage.",
+    "expected": {
+      "calculated_leakage": 0,
+      "must_contain_categories": [
+        "MISSING_INFORMATION"
+      ]
+    }
+  }
+}

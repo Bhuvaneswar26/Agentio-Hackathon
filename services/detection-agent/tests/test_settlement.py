@@ -70,3 +70,15 @@ def test_no_double_counting_across_engines(analyze, payload):
             per_item[f["item_id"]] = per_item.get(f["item_id"], 0) + f["leakage_amount"]
     totals = {i["item_id"]: i["total_amount"] for i in out.response["policy_validation"]["items"]}
     assert all(per_item[k] <= totals[k] for k in per_item)
+
+
+def test_exact_duplicate_line_removed_from_payable(analyze, payload):
+    # same line twice on the same service date => exact duplicate; its allowed amount must not be paid
+    payload["claim"]["invoice"]["items"] = [
+        {"item_id": "A", "description": "Surgery", "service_code": "SURG", "total_amount": 30000, "service_date": "2026-06-02"},
+        {"item_id": "B", "description": "Surgery", "service_code": "SURG", "total_amount": 30000, "service_date": "2026-06-02"}]
+    payload["claim"]["invoice"]["total_amount"] = payload["claim"]["requested_amount"] = 60000
+    fin = analyze(payload).response["financial_summary"]
+    assert fin["eligible_amount"] == 60000 and fin["duplicate_deduction"] == 30000
+    assert fin["expected_settlement"] == 18000  # (60000 - 30000 - 10000 deductible) less 10% co-pay
+    assert any(s["step"] == "DUPLICATE_DEDUCTION" for s in fin["calculation_steps"])

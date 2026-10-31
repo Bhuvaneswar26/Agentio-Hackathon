@@ -75,3 +75,13 @@ def test_indian_date_format_and_unmapped_rule_note(client):
     body = client.post("/v1/detect", json=p).json()
     assert body["status"] == "COMPLETED"
     assert any("Mystery rider" in n for n in body["adapter_notes"])
+
+
+def test_exact_duplicate_invoice_is_not_payable_and_not_self_related(client):
+    hist = [{"claimId": "CLM-24011", "incidentDate": "2026-09-12", "amount": 28000, "status": "flagged",
+             "claimant": "Ananya Iyer", "provider": "Aarogyam Super Speciality",
+             "invoiceLines": payload()["invoiceLines"]}]
+    body = client.post("/v1/detect", json=payload(history=hist)).json()
+    fin = body["analysis"]["financial_summary"]
+    assert fin["duplicate_deduction"] == fin["eligible_amount"] and fin["expected_settlement"] == 0
+    assert body["claim"]["relatedClaimIds"] == ["CLM-24011"]  # never the claim itself

@@ -1,0 +1,160 @@
+{
+  "_scenario_notes": "Scenario 2. Three separable breaches: room rent 6000 over the per-day cap across 3 days, 2400 of excluded consumables, and 3000 over the diagnostics annual sub-limit.",
+  "_expected": {
+    "min_calculated_leakage": 11400,
+    "must_contain_categories": [
+      "POLICY_LIMIT_BREACH",
+      "EXCLUDED_SERVICE"
+    ]
+  },
+  "claim": {
+    "claim_id": "CLM-2025-0902",
+    "policy_number": "POL-HLT-2025-00412",
+    "claim_type": "HEALTH",
+    "claimant": {
+      "name": "Rahul Sharma",
+      "age": 46,
+      "patient_id": "PAT-1001"
+    },
+    "provider": {
+      "provider_id": "HSP-2001",
+      "name": "Lakeview Multispeciality Hospital",
+      "provider_type": "HOSPITAL",
+      "location": "Hyderabad"
+    },
+    "incident": {
+      "incident_date": "2025-07-14",
+      "admission_date": "2025-07-14",
+      "discharge_date": "2025-07-17"
+    },
+    "invoice": {
+      "invoice_id": "INV-LV-90210",
+      "invoice_date": "2025-07-17",
+      "total_amount": 51400,
+      "currency": "INR",
+      "items": [
+        {
+          "item_id": "ITEM-001",
+          "description": "Room Charges - Deluxe",
+          "service_code": "ROOM-PVT",
+          "quantity": 3,
+          "unit_price": 7000,
+          "total_amount": 21000
+        },
+        {
+          "item_id": "ITEM-002",
+          "description": "Surgical Gloves and Syringes",
+          "service_code": "CONS-GLOVE",
+          "quantity": 1,
+          "unit_price": 2400,
+          "total_amount": 2400
+        },
+        {
+          "item_id": "ITEM-003",
+          "description": "MRI Brain",
+          "service_code": "DIAG-MRI",
+          "quantity": 1,
+          "unit_price": 9000,
+          "total_amount": 9000
+        },
+        {
+          "item_id": "ITEM-004",
+          "description": "CT Abdomen",
+          "service_code": "DIAG-CT",
+          "quantity": 1,
+          "unit_price": 11000,
+          "total_amount": 11000
+        },
+        {
+          "item_id": "ITEM-005",
+          "description": "Ultrasound Whole Abdomen",
+          "service_code": "DIAG-USG",
+          "quantity": 1,
+          "unit_price": 8000,
+          "total_amount": 8000
+        }
+      ]
+    },
+    "requested_amount": 51400,
+    "proposed_settlement": 51400
+  },
+  "policy": {
+    "policy_number": "POL-HLT-2025-00412",
+    "policy_type": "HEALTH",
+    "valid_from": "2025-04-01",
+    "valid_until": "2026-03-31",
+    "inception_date": "2023-04-01",
+    "sum_insured": 500000,
+    "deductible": 10000,
+    "copayment_percentage": 10,
+    "coverage": [
+      {
+        "category": "ROOM_RENT",
+        "covered": true,
+        "daily_limit": 5000,
+        "clause_reference": "Clause 2.1"
+      },
+      {
+        "category": "ICU",
+        "covered": true,
+        "daily_limit": 10000,
+        "clause_reference": "Clause 2.2"
+      },
+      {
+        "category": "DIAGNOSTICS",
+        "covered": true,
+        "limit": 25000,
+        "clause_reference": "Clause 2.3"
+      },
+      {
+        "category": "SURGERY",
+        "covered": true,
+        "clause_reference": "Clause 2.0"
+      },
+      {
+        "category": "PHARMACY",
+        "covered": true,
+        "clause_reference": "Clause 2.0"
+      },
+      {
+        "category": "DOCTOR_FEES",
+        "covered": true,
+        "clause_reference": "Clause 2.0"
+      },
+      {
+        "category": "AMBULANCE",
+        "covered": true,
+        "limit": 2000,
+        "clause_reference": "Clause 2.4"
+      }
+    ],
+    "exclusions": [
+      {
+        "category": "CONSUMABLES",
+        "description": "Gloves, syringes, disposable gowns and masks",
+        "clause_reference": "Clause 3.1"
+      }
+    ],
+    "sublimits": [
+      {
+        "category": "ROOM_RENT",
+        "daily_limit": 5000,
+        "clause_reference": "Clause 2.1"
+      },
+      {
+        "category": "ICU",
+        "daily_limit": 10000,
+        "clause_reference": "Clause 2.2"
+      },
+      {
+        "category": "DIAGNOSTICS",
+        "limit": 25000,
+        "clause_reference": "Clause 2.3"
+      }
+    ]
+  },
+  "history": {
+    "previous_claims": [],
+    "related_invoices": []
+  }
+}
