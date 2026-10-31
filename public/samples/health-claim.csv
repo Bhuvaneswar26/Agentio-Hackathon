@@ -1,0 +1,5 @@
+claimId,policyNumber,claimant,incidentDate,domain,claimType,requestedAmount,provider,description,code,amount,invoice
+CLM-DEMO-01,HL-77821,Ananya Iyer,2026-09-12,Health,Hospitalisation,28000,Aarogyam Super Speciality,Room rent 3 days,ROOM-DLX,21000,INV-44109
+CLM-DEMO-01,HL-77821,Ananya Iyer,2026-09-12,Health,Hospitalisation,28000,Aarogyam Super Speciality,CBC diagnostic test,LAB-CBC,2000,INV-44109
+CLM-DEMO-01,HL-77821,Ananya Iyer,2026-09-12,Health,Hospitalisation,28000,Aarogyam Super Speciality,CBC diagnostic test,LAB-CBC,2000,INV-44109
+CLM-DEMO-01,HL-77821,Ananya Iyer,2026-09-12,Health,Hospitalisation,28000,Aarogyam Super Speciality,Surgical gloves,CONS-01,3000,INV-44109

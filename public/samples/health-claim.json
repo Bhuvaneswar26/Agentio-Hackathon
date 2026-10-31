@@ -1,0 +1,42 @@
+{
+  "claimId": "CLM-DEMO-01",
+  "policyNumber": "HL-77821",
+  "claimant": "Ananya Iyer",
+  "incidentDate": "2026-09-12",
+  "domain": "Health",
+  "claimType": "Hospitalisation",
+  "requestedAmount": 28000,
+  "proposedSettlement": 28000,
+  "provider": "Aarogyam Super Speciality",
+  "city": "Bengaluru",
+  "deductible": 10000,
+  "copay": 20,
+  "invoiceLines": [
+    {
+      "description": "Room rent 3 days",
+      "code": "ROOM-DLX",
+      "quantity": 3,
+      "unitPrice": 7000,
+      "amount": 21000,
+      "invoice": "INV-44109"
+    },
+    {
+      "description": "CBC diagnostic test",
+      "code": "LAB-CBC",
+      "amount": 2000,
+      "invoice": "INV-44109"
+    },
+    {
+      "description": "CBC diagnostic test",
+      "code": "LAB-CBC",
+      "amount": 2000,
+      "invoice": "INV-44109"
+    },
+    {
+      "description": "Surgical gloves",
+      "code": "CONS-01",
+      "amount": 3000,
+      "invoice": "INV-44109"
+    }
+  ]
+}
