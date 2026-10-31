@@ -1,6 +1,6 @@
-import type { AuditEvent, Claim, Finding, InvoiceLine, PolicyRule, ProviderStat } from '../types'
+import type { AuditEvent, Claim, Finding, InvoiceLine, PolicyRule } from '../types'
 
-const healthRules = (limit: number, deductible: number, copay: number): PolicyRule[] => [
+export const healthRules = (limit: number, deductible: number, copay: number): PolicyRule[] => [
   {
     id: 'PR-ROOM',
     name: 'Room rent sub-limit',
@@ -664,32 +664,6 @@ function extraClaims(): Claim[] {
 }
 
 export const allSeedClaims: Claim[] = [...seedClaims, ...extraClaims()]
-
-export const seedProviders: ProviderStat[] = (() => {
-  const map = new Map<string, ProviderStat>()
-  for (const c of allSeedClaims) {
-    const cur = map.get(c.provider) ?? {
-      name: c.provider,
-      domain: c.domain,
-      claims: 0,
-      billed: 0,
-      avgVsPeer: 1,
-      risk: 0,
-      flaggedShare: 0,
-    }
-    cur.claims += 1
-    cur.billed += c.requestedAmount
-    cur.risk += c.riskScore
-    if (c.queue === 'flagged' || c.queue === 'confirmed' || c.queue === 'special') cur.flaggedShare += 1
-    map.set(c.provider, cur)
-  }
-  return [...map.values()].map((p) => ({
-    ...p,
-    risk: Math.round(p.risk / p.claims),
-    flaggedShare: p.flaggedShare / p.claims,
-    avgVsPeer: 0.75 + (p.risk % 40) / 80,
-  }))
-})()
 
 export const seedAudit: AuditEvent[] = [
   {

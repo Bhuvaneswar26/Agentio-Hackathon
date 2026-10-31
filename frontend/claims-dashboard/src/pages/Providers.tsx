@@ -1,11 +1,11 @@
 import { Scatter, ScatterChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, ZAxis } from 'recharts'
-import { PageHeader, Panel } from '../components/ui'
-import { inr, pct } from '../lib/format'
-import { seedProviders, useAppStore } from '../store/useAppStore'
+import { EmptyState, PageHeader, Panel, RiskPill } from '../components/ui'
+import { inr, palette, pct } from '../lib/format'
+import { useAppStore } from '../store/useAppStore'
 
 export function Providers() {
   const claims = useAppStore((s) => s.claims)
-  const names = seedProviders.map((p) => p.name)
+  const names = [...new Set(claims.map((c) => c.provider).filter(Boolean))]
   const live = names.map((name) => {
     const subset = claims.filter((c) => c.provider === name)
     const flagged = subset.filter((c) => ['flagged', 'confirmed', 'special'].includes(c.queue)).length
@@ -26,6 +26,10 @@ export function Providers() {
         title="Provider intelligence"
         description="Compare billed volume against flagged share. Outliers are unusual billing patterns, not automatic fraud conclusions."
       />
+      {live.length === 0 ? (
+        <EmptyState title="No providers yet" body="Providers appear here once you ingest a claim pack." />
+      ) : (
+      <>
       <Panel title="Volume vs flagged ratio">
         <div className="h-80">
           <ResponsiveContainer>
@@ -41,7 +45,7 @@ export function Providers() {
                   return String(value)
                 }}
               />
-              <Scatter data={live} fill="#2dd891" />
+              <Scatter data={live} fill={palette.flagged} />
             </ScatterChart>
           </ResponsiveContainer>
         </div>
@@ -61,17 +65,19 @@ export function Providers() {
             {live
               .sort((a, b) => b.risk - a.risk)
               .map((p) => (
-                <tr key={p.name} className="border-t border-line">
+                <tr key={p.name} className="border-t border-line transition-colors hover:bg-mist/60">
                   <td className="px-4 py-3 font-medium">{p.name}</td>
                   <td className="px-4 py-3 font-mono">{p.claims}</td>
                   <td className="px-4 py-3 font-mono">{inr(p.billed)}</td>
-                  <td className="px-4 py-3 font-mono">{pct(p.flaggedShare)}</td>
-                  <td className="px-4 py-3 font-mono">{p.risk}</td>
+                  <td className={`px-4 py-3 font-mono ${p.flaggedShare > 0.5 ? 'font-semibold text-red-700' : p.flaggedShare > 0.25 ? 'text-amber-700' : ''}`}>{pct(p.flaggedShare)}</td>
+                  <td className="px-4 py-3">{p.claims ? <RiskPill score={p.risk} /> : <span className="text-mute">—</span>}</td>
                 </tr>
               ))}
           </tbody>
         </table>
       </div>
+      </>
+      )}
     </div>
   )
 }

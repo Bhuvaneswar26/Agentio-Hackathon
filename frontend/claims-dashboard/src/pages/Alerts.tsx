@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Filter, RotateCcw } from "lucide-react";
 import {
   EmptyState,
@@ -7,17 +7,30 @@ import {
   QueueBadge,
   SeverityBadge,
 } from "../components/ui";
-import { findingLabel, inr } from "../lib/format";
+import {
+  findingLabel,
+  inr,
+  severityBorder,
+  severityDot,
+  severityOrder,
+  severityTone,
+} from "../lib/format";
 import { useAppStore } from "../store/useAppStore";
-import type { Certainty, FindingKind } from "../types";
+import type { Certainty, FindingKind, Severity } from "../types";
 
 export function Alerts() {
   const claims = useAppStore((s) => s.claims);
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
   const [kind, setKind] = useState("all");
   const [certainty, setCertainty] = useState("all");
   const [minRisk, setMinRisk] = useState(0);
   const [provider, setProvider] = useState("all");
-  const [severity, setSeverity] = useState("all");
+  // A severity chip elsewhere in the app links here with ?severity=critical.
+  const [severity, setSeverity] = useState(() => {
+    const fromUrl = params.get("severity");
+    return severityOrder.includes(fromUrl as Severity) ? (fromUrl as string) : "all";
+  });
   const [reviewStatus, setReviewStatus] = useState("all");
   const [claimType, setClaimType] = useState("all");
   const [domain, setDomain] = useState("all");
@@ -74,6 +87,13 @@ export function Alerts() {
     new Set(claims.map((claim) => claim.claimType).filter(Boolean)),
   ).sort();
 
+  const severityCounts = severityOrder.map((value) => ({
+    value,
+    count: claims
+      .flatMap((c) => c.findings)
+      .filter((f) => f.severity === value).length,
+  }));
+
   return (
     <div>
       <PageHeader
@@ -81,6 +101,43 @@ export function Alerts() {
         title="Fraud alerts & leakage findings"
         description="Each row is an explainable finding. Confirmed amounts are calculated. Potential amounts stay out of savings. Legitimate repeats are labelled so they are not treated as duplicates."
       />
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setSeverity("all")}
+          aria-pressed={severity === "all"}
+          className={`rounded-full px-3 py-1.5 text-xs font-medium transition hover:-translate-y-0.5 ${
+            severity === "all"
+              ? "bg-ink text-white shadow-md"
+              : "border border-line bg-white text-ink hover:border-ink/40"
+          }`}
+        >
+          All severities
+        </button>
+        {severityCounts.map(({ value, count }) => {
+          const active = severity === value;
+          return (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setSeverity(active ? "all" : value)}
+              aria-pressed={active}
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium capitalize transition hover:-translate-y-0.5 hover:shadow-md ${severityTone[value]} ${
+                active ? "ring-2 ring-ink ring-offset-2" : "opacity-80 hover:opacity-100"
+              }`}
+            >
+              <span
+                className={`h-2 w-2 rounded-full ${value === "critical" ? "bg-white" : severityDot[value]}`}
+              />
+              {value}
+              <span className="font-mono font-semibold">{count}</span>
+            </button>
+          );
+        })}
+        <span className="ml-auto text-xs text-mute" aria-live="polite">
+          {rows.length} finding{rows.length === 1 ? "" : "s"} shown
+        </span>
+      </div>
       <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-mute">
         <Filter size={14} /> Filter findings
       </div>
@@ -261,8 +318,14 @@ export function Alerts() {
             </thead>
             <tbody>
               {rows.map(({ claim, finding }) => (
-                <tr key={finding.id} className="border-t border-line align-top">
-                  <td className="px-4 py-3">
+                <tr
+                  key={finding.id}
+                  onClick={() => navigate(`/claims/${claim.id}`)}
+                  className="cursor-pointer border-t border-line align-top transition-colors hover:bg-mist/60"
+                >
+                  <td
+                    className={`border-l-4 px-4 py-3 ${severityBorder[finding.severity]}`}
+                  >
                     <p className="font-medium">{finding.title}</p>
                     <p className="mt-1 max-w-md text-xs text-mute">
                       {finding.explanation}
@@ -270,8 +333,9 @@ export function Alerts() {
                   </td>
                   <td className="px-4 py-3">
                     <Link
-                      className="font-medium hover:text-brand-dark"
+                      className="font-medium hover:text-brand-dark hover:underline"
                       to={`/claims/${claim.id}`}
+                      onClick={(e) => e.stopPropagation()}
                     >
                       {claim.id}
                     </Link>

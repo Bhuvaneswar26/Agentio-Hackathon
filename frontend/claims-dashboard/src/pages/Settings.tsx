@@ -2,7 +2,7 @@ import { PageHeader, Panel } from '../components/ui'
 import { useAppStore } from '../store/useAppStore'
 
 export function Settings() {
-  const { agentUrl, setAgentUrl, resetDemo, jobs } = useAppStore()
+  const { agentUrl, setAgentUrl, clearLocalData, loadDemoData, claims, jobs } = useAppStore()
   return (
     <div>
       <PageHeader
@@ -33,9 +33,28 @@ export function Settings() {
           ))}
         </ul>
       </Panel>
-      <button type="button" onClick={resetDemo} className="rounded-full border border-line bg-white px-4 py-2 text-sm">
-        Reset demo portfolio
-      </button>
+      <Panel title="Local data">
+        <p className="text-sm text-mute">
+          {claims.length} claim{claims.length === 1 ? '' : 's'} on the desk in this browser. The dashboard starts empty; claims,
+          the audit trail and ingest jobs live in this browser only. The master policy is stored in the engine database and is not affected.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={clearLocalData}
+            className="rounded-full border border-red-200 bg-white px-4 py-2 text-sm text-red-700 hover:bg-red-50"
+          >
+            Clear claims and audit trail
+          </button>
+          <button
+            type="button"
+            onClick={loadDemoData}
+            className="rounded-full border border-line bg-white px-4 py-2 text-sm hover:border-ink/40 hover:bg-mist"
+          >
+            Load demo portfolio
+          </button>
+        </div>
+      </Panel>
     </div>
   )
 }

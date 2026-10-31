@@ -10,11 +10,11 @@ import { uid } from "./format";
 const ROOM = /room rent|deluxe room|ward|icu/i;
 const PHYSIO = /physio|rehabilitation|session/i;
 
-function lineKey(line: InvoiceLine) {
+export function lineKey(line: InvoiceLine) {
   return `${(line.code || line.description).toLowerCase().replace(/\s+/g, "")}|${line.amount}`;
 }
 
-function explicitExclusion(
+export function explicitExclusion(
   line: InvoiceLine,
   rules: DetectionPayload["policy"]["rules"],
 ) {
@@ -32,7 +32,7 @@ function explicitExclusion(
   });
 }
 
-function explicitDailyLimit(
+export function explicitDailyLimit(
   line: InvoiceLine,
   rules: DetectionPayload["policy"]["rules"],
 ) {

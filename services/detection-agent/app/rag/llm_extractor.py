@@ -1,4 +1,8 @@
-"""Optional Claude- or Gemini-backed extraction over retrieved policy clauses.
+"""Optional Claude-, Gemini- or Sarvam-backed extraction over retrieved policy clauses.
+
+Gemini and Sarvam are called through LangChain (`langchain-google-genai`, and `langchain-openai`
+pointed at Sarvam's OpenAI-compatible API): a prompt | structured-output chain, so the model's reply is
+validated against a pydantic schema before anything downstream sees it.
 
 This is the generative half of the RAG pipeline and it is strictly optional: when the selected
 provider's package or API key is absent the service runs on rule-based extraction alone and says
@@ -7,20 +11,24 @@ each fact, and is told to return nothing rather than guess -- so an LLM fact is 
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
+import re
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.core.config import Settings, get_settings
 from app.rag.extractors import ExtractedFact
+from app.rag.guardrails import GUARDRAIL_CONTEXT, OutOfScopeError
 from app.rag.retriever import Retrieved
 
 log = logging.getLogger(__name__)
 
 CLAUDE_MODEL = "claude-opus-5-5"
 GEMINI_MODEL = "gemini-3.6-flash"
+SARVAM_MODEL = "sarvam-105b"
 
 SYSTEM = """You extract insurance policy terms from policy wording, for a claims-leakage engine.
 
@@ -80,8 +88,23 @@ class LLMPolicyExtraction(BaseModel):
 
 
 class LLMPolicyAnswer(BaseModel):
-    answer: str
-    clause_ids: list[str]
+    """What the model may return for a question. `in_scope` is the model-side half of the guardrails."""
+    in_scope: bool = Field(description="False when the question is not about the supplied policy wording")
+    refusal_reason: str = Field(default="", description="One sentence, only when in_scope is false")
+    stated_in_policy: bool = Field(default=True, description="False when the clauses do not state the answer")
+    answer: str = ""
+    clause_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("refusal_reason", "answer", mode="before")
+    @classmethod
+    def _null_text_is_empty(cls, value):
+        # Some models return null for an empty string.
+        return "" if value is None else value
+
+    @field_validator("clause_ids", mode="before")
+    @classmethod
+    def _null_ids_is_empty(cls, value):
+        return [] if value is None else value
 
 
 def configured_provider(settings: Settings | None = None) -> str:
@@ -91,10 +114,25 @@ def configured_provider(settings: Settings | None = None) -> str:
 def configured_model(settings: Settings | None = None) -> str:
     provider = configured_provider(settings)
     if provider == "gemini":
-        return GEMINI_MODEL
+        return getattr(settings or get_settings(), "gemini_model", "") or GEMINI_MODEL
+    if provider == "sarvam":
+        return getattr(settings or get_settings(), "sarvam_model", "") or SARVAM_MODEL
     if provider == "claude":
         return CLAUDE_MODEL
     return "unknown"
+
+
+_LABELS = {"gemini": "Gemini", "sarvam": "Sarvam", "claude": "Claude"}
+
+
+def provider_label(settings: Settings | None = None) -> str:
+    """The provider's display name, for messages a person reads."""
+    provider = configured_provider(settings)
+    return _LABELS.get(provider, provider or "The language model")
+
+
+# Providers that go through LangChain and can answer questions under the guardrail context.
+LANGCHAIN_PROVIDERS = ("gemini", "sarvam")
 
 
 def available(settings: Settings | None = None) -> tuple[bool, str]:
@@ -112,13 +150,96 @@ def available(settings: Settings | None = None) -> tuple[bool, str]:
         return True, "ready"
     if provider == "gemini":
         try:
-            from google import genai  # noqa: F401
+            from langchain_google_genai import ChatGoogleGenerativeAI  # noqa: F401
         except ImportError:
-            return False, "google-genai package not installed (pip install google-genai)"
+            return False, "langchain-google-genai package not installed (pip install langchain-google-genai)"
         if not (settings.gemini_api_key or os.environ.get("GEMINI_API_KEY")):
             return False, "no GEMINI_API_KEY in the environment"
         return True, "ready"
-    return False, f"unsupported CG_LLM_PROVIDER {settings.llm_provider!r}; choose 'claude' or 'gemini'"
+    if provider == "sarvam":
+        try:
+            from langchain_openai import ChatOpenAI  # noqa: F401
+        except ImportError:
+            return False, "langchain-openai package not installed (pip install langchain-openai)"
+        if not (settings.sarvam_api_key or os.environ.get("SARVAM_API_KEY")):
+            return False, "no SARVAM_API_KEY in the environment"
+        return True, "ready"
+    return False, f"unsupported CG_LLM_PROVIDER {settings.llm_provider!r}; choose 'claude', 'gemini' or 'sarvam'"
+
+
+def _gemini_chat_model(settings: Settings, *, max_output_tokens: int):
+    """The LangChain chat model for Gemini. Temperature 0: these are look-ups, not creative writing."""
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    return ChatGoogleGenerativeAI(
+        model=configured_model(settings),
+        api_key=settings.gemini_api_key or os.environ.get("GEMINI_API_KEY"),
+        temperature=0.0,
+        max_tokens=max_output_tokens,
+        retries=1,  # a daily-quota 429 will not clear on retry, and each attempt can count against it
+        request_timeout=60,
+    )
+
+
+# Sarvam's 105B model reasons before it answers, and the reasoning counts against the output limit. With a
+# small limit the reasoning uses it all and the reply comes back empty, so never ask for less than this.
+SARVAM_MIN_OUTPUT_TOKENS = 6000
+
+
+def _sarvam_chat_model(settings: Settings, *, max_output_tokens: int):
+    """LangChain chat model for Sarvam, through its OpenAI-compatible endpoint."""
+    from langchain_openai import ChatOpenAI
+
+    key = settings.sarvam_api_key or os.environ.get("SARVAM_API_KEY") or ""
+    return ChatOpenAI(
+        model=configured_model(settings),
+        base_url=settings.sarvam_base_url,
+        api_key=key,
+        # Sarvam's own header; the Authorization: Bearer header LangChain adds is accepted as well.
+        default_headers={"api-subscription-key": key},
+        temperature=0.0,
+        max_tokens=max(max_output_tokens, SARVAM_MIN_OUTPUT_TOKENS),
+        max_retries=1,
+        timeout=120,
+    )
+
+
+def _chat_model(settings: Settings, *, max_output_tokens: int):
+    """The LangChain chat model for the configured provider."""
+    if configured_provider(settings) == "sarvam":
+        return _sarvam_chat_model(settings, max_output_tokens=max_output_tokens)
+    return _gemini_chat_model(settings, max_output_tokens=max_output_tokens)
+
+
+def _structured(model, schema: type[BaseModel], settings: Settings, *, include_raw: bool = False):
+    """Wrap a chat model so it returns `schema`.
+
+    Gemini enforces the schema natively. For Sarvam, strict `json_schema` mode was measured to be slow and, on
+    a larger schema, to return empty fields, so Sarvam is asked for a JSON object (the schema is described in
+    the system prompt, see `_system_for`) and the reply is validated with pydantic.
+    """
+    if configured_provider(settings) == "sarvam":
+        return model.with_structured_output(schema, method="json_mode", include_raw=include_raw)
+    return model.with_structured_output(schema, include_raw=include_raw)
+
+
+def _system_for(settings: Settings, text: str, schema: type[BaseModel]) -> str:
+    """The system prompt, with the output schema spelled out for providers that run in JSON-object mode."""
+    if configured_provider(settings) != "sarvam":
+        return text
+    return (
+        f"{text}\n\nOUTPUT FORMAT\nReply with one JSON object and nothing else (no prose, no code fences). "
+        f"It must match this JSON schema; use null only where the schema allows it:\n"
+        f"{json.dumps(schema.model_json_schema(), separators=(',', ':'))}"
+    )
+
+
+_CLAUSE_TAG = re.compile(r"\s*\[\s*clause[_ ]?ids?\s*:[^\]]*\]", re.IGNORECASE)
+
+
+def _clean_answer(text: str) -> str:
+    """Remove inline `[clause_id: 1.3]` tags the model sometimes pastes into prose; citations live in clause_ids."""
+    return _CLAUSE_TAG.sub("", text).strip()
 
 
 def _clause_block(hits: list[Retrieved]) -> str:
@@ -206,25 +327,22 @@ def extract_with_llm(hits: list[Retrieved], *, model: str | None = None) -> tupl
             input_tokens = getattr(usage, "input_tokens", None)
             output_tokens = getattr(usage, "output_tokens", None)
         else:
-            from google import genai
-            from google.genai import types
+            from langchain_core.messages import SystemMessage
+            from langchain_core.prompts import ChatPromptTemplate
 
-            client = genai.Client(api_key=settings.gemini_api_key or os.environ.get("GEMINI_API_KEY"))
-            response = client.models.generate_content(
-                model=model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM,
-                    response_mime_type="application/json",
-                    response_schema=LLMPolicyExtraction,
-                    max_output_tokens=16000,
-                ),
+            chain = (
+                ChatPromptTemplate.from_messages(
+                    [SystemMessage(content=_system_for(settings, SYSTEM, LLMPolicyExtraction)), ("human", "{task}")])
+                | _structured(_chat_model(settings, max_output_tokens=16000), LLMPolicyExtraction, settings,
+                              include_raw=True)
             )
-            extraction = (LLMPolicyExtraction.model_validate_json(response.text)
-                          if response.text else None)
-            usage = getattr(response, "usage_metadata", None)
-            input_tokens = getattr(usage, "prompt_token_count", None)
-            output_tokens = getattr(usage, "candidates_token_count", None)
+            result = chain.invoke({"task": prompt})
+            extraction = result.get("parsed")
+            if extraction is None and result.get("parsing_error"):
+                raise ValueError(f"{provider_label(settings)} output did not match the schema: {result['parsing_error']}")
+            usage = getattr(result.get("raw"), "usage_metadata", None) or {}
+            input_tokens = usage.get("input_tokens")
+            output_tokens = usage.get("output_tokens")
     except Exception as exc:  # never fail policy extraction because the LLM path failed
         log.exception("LLM policy extraction failed")
         return [], {"status": "ERROR", "reason": str(exc), "provider": provider, "model": model}
@@ -242,51 +360,86 @@ def extract_with_llm(hits: list[Retrieved], *, model: str | None = None) -> tupl
     }
 
 
-def answer_with_gemini(question: str, hits: list[Retrieved]) -> dict[str, Any]:
-    """Answer from retrieved clauses only, rejecting model citations not supplied in the prompt."""
-    settings = get_settings()
-    try:
-        from google import genai
-        from google.genai import types
-    except ImportError as exc:
-        raise RuntimeError("google-genai package not installed (pip install google-genai)") from exc
+def answer_with_llm(question: str, hits: list[Retrieved]) -> dict[str, Any]:
+    """Answer from retrieved clauses only, through LangChain, under the scope guardrails.
 
-    api_key = settings.gemini_api_key or os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("no GEMINI_API_KEY in the environment")
+    Raises OutOfScopeError when the model judges the question not to be about the policy, and
+    RuntimeError for anything else that makes the answer unusable (no key, bad citation, no reply).
+    """
+    settings = get_settings()
+    ok, reason = available(settings)
+    if not ok or configured_provider(settings) not in LANGCHAIN_PROVIDERS:
+        raise RuntimeError(reason if not ok else f"CG_LLM_PROVIDER {settings.llm_provider!r} cannot answer questions")
+    label = provider_label(settings)
+
+    from langchain_core.messages import SystemMessage
+    from langchain_core.prompts import ChatPromptTemplate
 
     allowed_ids = {hit.chunk.clause_id or hit.chunk.chunk_id for hit in hits}
-    prompt = (
-        "Answer the user's question using only the supplied policy clauses. If they do not contain "
-        "the answer, say that the policy wording does not state it. Do not use outside knowledge or "
-        "make assumptions. Cite every factual statement with the clause_id(s) that support it. "
-        "Return only clause IDs from the supplied clauses.\n\n"
-        f"Question: {question}\n\nSupplied clauses:\n{_clause_block(hits)}"
+    chain = (
+        ChatPromptTemplate.from_messages([
+            SystemMessage(content=_system_for(settings, GUARDRAIL_CONTEXT, LLMPolicyAnswer)),
+            ("human", "Question: {question}\n\n<policy_clauses>\n{clauses}\n</policy_clauses>"),
+        ])
+        | _structured(_chat_model(settings, max_output_tokens=2048), LLMPolicyAnswer, settings)
     )
-    client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction="You are a careful insurance-policy assistant. Ground every answer in the provided text.",
-            response_mime_type="application/json",
-            response_schema=LLMPolicyAnswer,
-            max_output_tokens=2048,
-        ),
-    )
-    if not response.text:
-        raise RuntimeError("Gemini returned no answer")
-    answer = LLMPolicyAnswer.model_validate_json(response.text)
+    answer = chain.invoke({"question": question, "clauses": _clause_block(hits)})
+    if answer is None:
+        raise RuntimeError(f"{label} returned no answer")
+
+    if not answer.in_scope:
+        raise OutOfScopeError(answer.refusal_reason or "The question is not about the policy document.")
+
     cited_ids = list(dict.fromkeys(answer.clause_ids))
     unsupported_ids = [clause_id for clause_id in cited_ids if clause_id not in allowed_ids]
     if unsupported_ids:
-        log.warning("Gemini answer cited clauses not supplied in retrieval: %s", unsupported_ids)
-        raise RuntimeError("Gemini returned a citation that was not in the retrieved clauses")
-    if not cited_ids:
-        raise RuntimeError("Gemini answer did not cite any retrieved clauses")
+        log.warning("%s answer cited clauses not supplied in retrieval: %s", label, unsupported_ids)
+        raise RuntimeError(f"{label} returned a citation that was not in the retrieved clauses")
+    answer_text = _clean_answer(answer.answer)
+    if not answer_text:
+        raise RuntimeError(f"{label} returned an empty answer")
+    if answer.stated_in_policy and not cited_ids:
+        raise RuntimeError(f"{label} answer did not cite any retrieved clauses")
     return {
-        "answer": answer.answer,
+        "answer": answer_text,
         "cited_clauses": cited_ids,
-        "provider": "gemini",
-        "model": GEMINI_MODEL,
+        "stated_in_policy": answer.stated_in_policy,
+        "provider": configured_provider(settings),
+        "model": configured_model(settings),
+        "framework": "langchain",
     }
+
+
+def describe_llm_error(exc: BaseException) -> tuple[str, str]:
+    """Turn a provider exception into (kind, message a claims handler can act on)."""
+    text = f"{type(exc).__name__}: {exc}"
+    lowered = text.lower()
+    label = provider_label()
+    provider = configured_provider()
+    key_name = {"gemini": "GEMINI_API_KEY", "sarvam": "SARVAM_API_KEY", "claude": "ANTHROPIC_API_KEY"}.get(provider, "the API key")
+    model_var = {"gemini": "CG_GEMINI_MODEL", "sarvam": "CG_SARVAM_MODEL"}.get(provider)
+    if "resource_exhausted" in lowered or "429" in lowered or "ratelimit" in lowered or "rate limit" in lowered or "quota" in lowered:
+        wait = re.search(r"retry in ([0-9hms.]+)", text)
+        return "rate_limit", (
+            f"{label}'s usage quota for this API key is used up"
+            + (f"; the provider says to retry in {_human_wait(wait.group(1))}" if wait else "")
+            + ". Try again later, "
+            + (f"set {model_var} to another model, " if model_var else "")
+            + "switch CG_LLM_PROVIDER to another provider, or use a key with more quota.")
+    if "api_key_invalid" in lowered or "api key not valid" in lowered or "permission_denied" in lowered \
+            or "unauthenticated" in lowered or "invalid_api_key" in lowered or "401" in lowered or "403" in lowered:
+        return "auth", f"{label} rejected the API key. Check {key_name} in services/detection-agent/.env and restart the backend."
+    if "unavailable" in lowered or "503" in lowered or "timeout" in lowered or "timed out" in lowered \
+            or "deadline" in lowered:
+        return "unavailable", f"{label} is temporarily unavailable or timed out. Please try again in a moment."
+    if "not_found" in lowered or "404" in lowered or "model_not_found" in lowered:
+        return "model", f"{label} does not recognise the model {configured_model()!r}." + (f" Set {model_var} to a model your key can use." if model_var else "")
+    return "other", f"{label} could not complete this request."
+
+
+def _human_wait(raw: str) -> str:
+    """'18h52m34.98s' -> '18h 52m'. Seconds are noise on a wait this long."""
+    parts = re.findall(r"(\d+)(h|m)", raw)
+    if parts:
+        return " ".join(f"{n}{u}" for n, u in parts)
+    return raw.split(".")[0] + "s" if raw.endswith("s") else raw

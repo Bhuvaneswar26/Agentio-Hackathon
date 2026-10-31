@@ -97,8 +97,19 @@ export type PolicyAnswer = {
   provider?: string;
   model?: string;
   cited_clauses?: string[];
-  answer_source?: "gemini_grounded" | "retrieval_fallback" | "retrieval";
+  /** False when the model found the question in scope but the policy wording does not state the answer. */
+  stated_in_policy?: boolean;
+  /** True when the guardrails declined the question because it is not about the policy document. */
+  out_of_scope?: boolean;
+  scope_category?: "empty" | "too_long" | "prompt_injection" | "off_topic";
+  answer_source?:
+    | "llm_grounded"
+    | "retrieval_fallback"
+    | "retrieval"
+    | "guardrail";
   llm_notice?: string;
+  /** Why the model did not answer. `kind` is rate_limit, auth, unavailable, model or other. */
+  llm_error?: { kind: string; message: string };
   best_citation?: string;
   confidence?: number;
   clauses: Array<{
@@ -109,13 +120,27 @@ export type PolicyAnswer = {
   }>;
 };
 
+/** Display name of an LLM provider id as the backend reports it. */
+export function providerLabel(provider?: string | null): string {
+  const labels: Record<string, string> = { gemini: "Gemini", sarvam: "Sarvam", claude: "Claude" };
+  return (provider && labels[provider]) || "The language model";
+}
+
+/** The environment variable that holds the key for a provider. */
+export function providerKeyName(provider?: string | null): string {
+  const names: Record<string, string> = { gemini: "GEMINI_API_KEY", sarvam: "SARVAM_API_KEY", claude: "ANTHROPIC_API_KEY" };
+  return (provider && names[provider]) || "the provider API key";
+}
+
 export type RagStatus = {
   llm_extraction?: {
     status: "AVAILABLE" | "UNAVAILABLE";
     reason?: string;
     provider?: string;
     model?: string;
+    framework?: string | null;
   };
+  guardrails?: { status: "ACTIVE"; scope: string; layers: string[] };
 };
 
 async function post<T>(

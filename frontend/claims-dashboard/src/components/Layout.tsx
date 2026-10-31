@@ -3,6 +3,7 @@ import {
   BookOpen,
   FileSearch,
   LayoutDashboard,
+  Library,
   ScanLine,
   Settings,
   ShieldAlert,
@@ -18,6 +19,7 @@ const nav = [
   { to: "/", label: "Command center", icon: LayoutDashboard },
   { to: "/ingest", label: "Ingest & extract", icon: ScanLine },
   { to: "/policy", label: "Policy reader", icon: BookOpen },
+  { to: "/master-policy", label: "Master policy", icon: Library },
   { to: "/alerts", label: "Fraud & leakage", icon: ShieldAlert },
   { to: "/claims", label: "Claims workspace", icon: FileSearch },
   { to: "/providers", label: "Provider intel", icon: Users },
@@ -28,7 +30,8 @@ const nav = [
 
 export function Layout() {
   const location = useLocation();
-  const { role, setRole, claims } = useAppStore();
+  const { role, setRole, claims, analyst, setAnalystName } = useAppStore();
+  const analystName = analyst.name;
   const special = claims.filter((c) => c.queue === "special").length;
   const flagged = claims.filter(
     (c) => c.queue === "flagged" || c.queue === "confirmed",
@@ -84,6 +87,20 @@ export function Layout() {
           })}
         </nav>
         <div className="border-t border-line p-4">
+          <label
+            htmlFor="analyst-name"
+            className="mb-2 block px-2 text-[11px] font-semibold uppercase tracking-wider text-mute"
+          >
+            Your name
+          </label>
+          <input
+            id="analyst-name"
+            value={analystName}
+            onChange={(e) => setAnalystName(e.target.value)}
+            placeholder="Shown on every decision"
+            maxLength={60}
+            className="mb-4 w-full rounded-lg border border-line bg-mist px-3 py-2.5 text-sm font-medium text-ink outline-none transition-colors focus:border-brand focus:ring-1 focus:ring-brand/20"
+          />
           <p className="mb-3 px-2 text-[11px] font-semibold uppercase tracking-wider text-mute">
             Active role
           </p>

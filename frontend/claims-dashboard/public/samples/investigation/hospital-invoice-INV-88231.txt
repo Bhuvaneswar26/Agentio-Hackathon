@@ -1,0 +1,16 @@
+CITY CARE HOSPITAL - TAX INVOICE
+Hospital: City Care Hospital
+Patient: Rohan Malhotra
+Policy: HL-55021
+Invoice No: INV-88231
+Invoice Date: 12/10/2026
+
+Description | Qty | Amount
+Room rent deluxe | 3 days | 21,000
+Surgeon fees | 1 | 18,000
+Operation theatre charges | 1 | 9,000
+CBC blood test | 1 | 1,500
+Surgical gloves and syringes | 1 | 2,500
+Pharmacy medicines | 1 | 5,200
+
+Total: 57,200

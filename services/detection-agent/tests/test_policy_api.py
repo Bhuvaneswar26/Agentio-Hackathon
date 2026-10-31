@@ -127,7 +127,7 @@ def test_ask_automatically_uses_gemini(client, monkeypatch):
             "model": "gemini-3.6-flash",
         }
 
-    monkeypatch.setattr(policy_api, "answer_with_gemini", fake_answer)
+    monkeypatch.setattr(policy_api, "answer_with_llm", fake_answer)
     body = client.post("/api/v1/policy/ask",
                        json={"document_text": DOC, "question": "what is the co-payment?"}).json()
     assert body["answer"] == "The insured bears 15% as co-payment."
@@ -141,7 +141,9 @@ def test_ask_falls_back_to_retrieved_clauses_when_gemini_is_unavailable(client, 
     def unavailable(question, hits):
         raise RuntimeError("provider unavailable")
 
-    monkeypatch.setattr(policy_api, "answer_with_gemini", unavailable)
+    monkeypatch.setattr(policy_api, "answer_with_llm", unavailable)
+    # Whether a real key is configured must not change what this test asserts.
+    monkeypatch.setattr(policy_api, "llm_available", lambda: (False, "no GEMINI_API_KEY in the environment"))
     response = client.post("/api/v1/policy/ask", json={
         "document_text": DOC,
         "question": "what is the co-payment?",
@@ -149,7 +151,8 @@ def test_ask_falls_back_to_retrieved_clauses_when_gemini_is_unavailable(client, 
     assert response.status_code == 200
     body = response.json()
     assert body["answer_source"] == "retrieval_fallback"
-    assert "Gemini is not ready" in body["llm_notice"]
+    assert "is not ready" in body["llm_notice"]
+    assert body["llm_error"]["kind"] == "unavailable"
     assert body["answered"] is True
     assert body["clauses"]
 
@@ -181,3 +184,21 @@ def test_models_status_exposes_synthetic_provenance(client):
     for info in body.values():
         if info.get("synthetic"):
             assert "caveat" in info
+
+
+def test_a_quota_error_is_reported_with_its_real_reason(client, monkeypatch):
+    """The user must be told it is a quota problem, not a generic failure."""
+    from app.api import policy as policy_api
+
+    def quota(question, hits):
+        raise RuntimeError("Error calling model (RESOURCE_EXHAUSTED): 429 Quota exceeded. "
+                           "Please retry in 18h52m34.98s.")
+
+    monkeypatch.setattr(policy_api, "answer_with_llm", quota)
+    monkeypatch.setattr(policy_api, "llm_available", lambda: (True, "ready"))
+    body = client.post("/api/v1/policy/ask", json={
+        "document_text": DOC, "question": "what is the co-payment?"}).json()
+    assert body["answer_source"] == "retrieval_fallback"
+    assert body["llm_error"]["kind"] == "rate_limit"
+    assert "quota" in body["llm_error"]["message"]
+    assert "18h 52m" in body["llm_error"]["message"]

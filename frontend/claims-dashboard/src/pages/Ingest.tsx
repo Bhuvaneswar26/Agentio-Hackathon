@@ -4,12 +4,13 @@ import {
   FileJson,
   Globe,
   Image as ImageIcon,
+  Library,
   Loader2,
   Send,
   Upload,
 } from "lucide-react";
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { PageHeader, Panel, SeverityBadge } from "../components/ui";
 import { runPreviewDetection } from "../lib/detectPreview";
 import { extractFromFile, extractFromUrl, formatLabel } from "../lib/extract";
@@ -35,7 +36,14 @@ export function Ingest() {
     claims,
     jobs,
     policyFromDocument,
+    masterPolicies,
+    masterPoliciesStatus,
+    loadMasterPolicies,
+    selectMasterPolicy,
   } = useAppStore();
+  useEffect(() => {
+    void loadMasterPolicies();
+  }, [loadMasterPolicies]);
   const [payload, setPayload] = useState<DetectionPayload | null>(null);
   const [busy, setBusy] = useState(false);
   const [url, setUrl] = useState("");
@@ -192,6 +200,41 @@ export function Ingest() {
         title="Ingest any claim pack"
         description="Drop a PDF invoice, claim JSON, Excel, CSV, photo, or a public web link. Images go through OCR. Structured files are mapped into the detection-agent payload without guessing missing policy facts."
       />
+
+      <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-white px-4 py-3 text-sm">
+        <Library className="h-4 w-4 shrink-0 text-brand-dark" />
+        <label htmlFor="master-policy-select" className="font-medium text-ink">
+          Assess against
+        </label>
+        <select
+          id="master-policy-select"
+          value={policyFromDocument?.masterId ?? ""}
+          onChange={(e) => selectMasterPolicy(e.target.value || null)}
+          disabled={masterPolicies.length === 0}
+          className="min-w-0 flex-1 rounded-lg border border-line bg-white px-3 py-1.5 text-sm outline-none focus:border-brand disabled:opacity-60"
+        >
+          <option value="">
+            {masterPolicies.length
+              ? "Policy terms from the claim pack only"
+              : masterPoliciesStatus === "loading"
+                ? "Loading the master policy…"
+                : masterPoliciesStatus === "error"
+                  ? "Master policy unavailable — engine not reachable"
+                  : "No policies in the master policy yet"}
+          </option>
+          {masterPolicies.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name} · {p.policyNumber}
+            </option>
+          ))}
+        </select>
+        <Link
+          to="/master-policy"
+          className="text-xs font-medium text-brand-dark hover:underline"
+        >
+          Manage master policy
+        </Link>
+      </div>
 
       {policyFromDocument ? (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-brand bg-brand/10 px-4 py-3 text-sm text-ink">
@@ -364,13 +407,13 @@ export function Ingest() {
                   </section>
                 ) : null}
                 {payload.extraction.missingFields.length ? (
-                  <p className="mb-3 rounded-xl bg-ink px-3 py-2 text-xs text-brand">
+                  <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                     Incomplete pack:{" "}
                     {payload.extraction.missingFields.join(", ")}. This will sit
                     in unassessed, not as leakage.
                   </p>
                 ) : (
-                  <p className="mb-3 rounded-xl bg-brand/20 px-3 py-2 text-xs">
+                  <p className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
                     Ready for the detection agent.
                   </p>
                 )}

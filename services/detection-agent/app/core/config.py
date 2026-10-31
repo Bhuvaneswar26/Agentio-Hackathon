@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     anthropic_api_key: str = Field(default="", validation_alias="ANTHROPIC_API_KEY")
     anthropic_auth_token: str = Field(default="", validation_alias="ANTHROPIC_AUTH_TOKEN")
     gemini_api_key: str = Field(default="", validation_alias="GEMINI_API_KEY")
+    # Override with CG_GEMINI_MODEL, e.g. to move to a model whose free-tier quota is not used up.
+    gemini_model: str = "gemini-3.6-flash"
+    # Sarvam AI serves an OpenAI-compatible chat API. Select it with CG_LLM_PROVIDER=sarvam.
+    sarvam_api_key: str = Field(default="", validation_alias="SARVAM_API_KEY")
+    sarvam_model: str = "sarvam-105b"
+    sarvam_base_url: str = "https://api.sarvam.ai/v2"
 
     database_url: str = "postgresql+psycopg://claimsguard:claimsguard@localhost:5432/claimsguard"
     auto_create_tables: bool = True

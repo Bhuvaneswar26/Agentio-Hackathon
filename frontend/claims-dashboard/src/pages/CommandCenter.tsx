@@ -12,18 +12,31 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ArrowUpRight, Upload } from "lucide-react";
 import { useMemo } from "react";
-import { KpiCard, PageHeader, Panel, QueueBadge } from "../components/ui";
-import { findingLabel, inr, pct } from "../lib/format";
+import {
+  KpiCard,
+  PageHeader,
+  Panel,
+  QueueBadge,
+  RiskPill,
+} from "../components/ui";
+import {
+  findingLabel,
+  inr,
+  palette,
+  pct,
+  severityDot,
+  severityOrder,
+  severityTone,
+} from "../lib/format";
 import { useAppStore } from "../store/useAppStore";
-
-const GREEN = "#2dd891";
-const INK = "#0a0a0a";
 
 export function CommandCenter() {
   const claims = useAppStore((s) => s.claims);
+  const loadDemoData = useAppStore((s) => s.loadDemoData);
+  const navigate = useNavigate();
   const processed = claims.length;
   const good = claims.filter(
     (c) => c.queue === "good" || c.queue === "dismissed",
@@ -63,14 +76,28 @@ export function CommandCenter() {
   }));
 
   const funnel = [
-    { name: "Processed", value: processed },
-    { name: "Good", value: good.length },
-    { name: "Flagged", value: flagged.length },
+    { name: "Processed", value: processed, tab: "all", color: palette.neutral },
+    { name: "Good", value: good.length, tab: "good", color: palette.good },
+    {
+      name: "Flagged",
+      value: flagged.length,
+      tab: "attention",
+      color: palette.flagged,
+    },
     {
       name: "Special",
       value: claims.filter((c) => c.queue === "special").length,
+      tab: "special",
+      color: palette.special,
     },
   ];
+
+  const bySeverity = severityOrder.map((severity) => ({
+    severity,
+    count: claims
+      .flatMap((c) => c.findings)
+      .filter((f) => f.severity === severity).length,
+  }));
 
   const trend = useMemo(() => {
     const weeks = new Map<
@@ -101,13 +128,24 @@ export function CommandCenter() {
   }, [claims]);
 
   const mix = [
-    { name: "Good", value: good.length, color: GREEN },
-    { name: "Flagged", value: flagged.length, color: INK },
-    { name: "Unassessed", value: unassessed.length, color: "#9ca3af" },
+    { name: "Good", value: good.length, color: palette.good, tab: "good" },
+    {
+      name: "Flagged",
+      value: flagged.length,
+      color: palette.flagged,
+      tab: "attention",
+    },
+    {
+      name: "Unassessed",
+      value: unassessed.length,
+      color: palette.warn,
+      tab: "unassessed",
+    },
     {
       name: "Intake",
       value: claims.filter((c) => c.queue === "intake").length,
-      color: "#d1d5db",
+      color: palette.neutral,
+      tab: "intake",
     },
   ];
 
@@ -122,49 +160,113 @@ export function CommandCenter() {
         actions={
           <Link
             to="/ingest"
-            className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm text-white transition hover:bg-brand-dark"
+            className="group inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm text-white transition hover:bg-brand-dark hover:shadow-md"
           >
-            <Upload size={15} /> Ingest a claim pack <ArrowUpRight size={14} />
+            <Upload size={15} /> Ingest a claim pack{" "}
+            <ArrowUpRight
+              size={14}
+              className="transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+            />
           </Link>
         }
       />
+
+      {processed === 0 ? (
+        <div className="mb-4 flex flex-col items-start gap-3 rounded-2xl border border-dashed border-line bg-white px-6 py-8 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-medium text-ink">No claims on the desk yet</p>
+            <p className="mt-1 text-sm text-mute">
+              Ingest a claim pack to see leakage, risk and alerts here, or load the demo portfolio to explore.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Link
+              to="/ingest"
+              className="rounded-full bg-ink px-4 py-2 text-sm text-white transition hover:bg-brand-dark"
+            >
+              Ingest a claim pack
+            </Link>
+            <button
+              type="button"
+              onClick={loadDemoData}
+              className="rounded-full border border-line px-4 py-2 text-sm transition hover:border-ink/40 hover:bg-mist"
+            >
+              Load demo portfolio
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <KpiCard
           label="Claims processed"
           value={String(processed)}
           hint="Demo + ingested packs"
+          to="/claims?tab=all"
         />
         <KpiCard
           label="Good claim ratio"
           value={pct(good.length / processed || 0)}
           hint={`${good.length} cleared`}
+          tone="good"
+          to="/claims?tab=good"
         />
         <KpiCard
           label="Flagged ratio"
           value={pct(flagged.length / processed || 0)}
           hint={`${flagged.length} need action`}
+          tone="warn"
+          to="/claims?tab=attention"
         />
         <KpiCard
           label="Confirmed leakage"
           value={inr(confirmed)}
           hint="Deterministic only"
-          accent
+          tone="bad"
+          to="/alerts"
         />
         <KpiCard
           label="Potential leakage"
           value={inr(potential)}
           hint="Held out of savings"
+          tone="warn"
+          to="/alerts"
         />
         <KpiCard
           label="Leakage vs billed"
           value={pct(leakageRatio)}
           hint={`${fraudish.length} fraud-like patterns`}
+          to="/alerts"
         />
       </div>
 
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-mute">
+          Findings by severity
+        </span>
+        {bySeverity.map(({ severity, count }) => (
+          <Link
+            key={severity}
+            to={`/alerts?severity=${severity}`}
+            className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium capitalize transition hover:-translate-y-0.5 hover:shadow-md ${severityTone[severity]}`}
+            title={`Open ${count} ${severity} finding${count === 1 ? "" : "s"}`}
+          >
+            <span
+              className={`h-2 w-2 rounded-full ${severity === "critical" ? "bg-white" : severityDot[severity]}`}
+            />
+            {severity}
+            <span className="font-mono font-semibold">{count}</span>
+          </Link>
+        ))}
+      </div>
+
       <div className="mt-5 grid gap-4 xl:grid-cols-3">
-        <Panel title="Claim mix">
+        <Panel
+          title="Claim mix"
+          action={
+            <span className="text-xs text-mute">Click a slice to open it</span>
+          }
+        >
           <div className="h-56">
             <ResponsiveContainer>
               <PieChart>
@@ -175,6 +277,11 @@ export function CommandCenter() {
                   innerRadius={52}
                   outerRadius={80}
                   paddingAngle={3}
+                  cursor="pointer"
+                  onClick={(slice) => {
+                    const tab = (slice as { tab?: string }).tab;
+                    if (tab) navigate(`/claims?tab=${tab}`);
+                  }}
                 >
                   {mix.map((e) => (
                     <Cell key={e.name} fill={e.color} />
@@ -184,15 +291,19 @@ export function CommandCenter() {
               </PieChart>
             </ResponsiveContainer>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-xs text-mute">
+          <div className="grid grid-cols-2 gap-1 text-xs text-mute">
             {mix.map((m) => (
-              <div key={m.name} className="flex items-center gap-2">
+              <Link
+                key={m.name}
+                to={`/claims?tab=${m.tab}`}
+                className="flex items-center gap-2 rounded-lg px-2 py-1 transition hover:bg-mist hover:text-ink"
+              >
                 <span
-                  className="h-2 w-2 rounded-full"
+                  className="h-2.5 w-2.5 rounded-full"
                   style={{ background: m.color }}
                 />
                 {m.name} · {m.value}
-              </div>
+              </Link>
             ))}
           </div>
         </Panel>
@@ -214,16 +325,16 @@ export function CommandCenter() {
                 <Area
                   type="monotone"
                   dataKey="good"
-                  stroke={GREEN}
-                  fill={GREEN}
-                  fillOpacity={0.35}
+                  stroke={palette.good}
+                  fill={palette.good}
+                  fillOpacity={0.3}
                 />
                 <Area
                   type="monotone"
                   dataKey="flagged"
-                  stroke={INK}
-                  fill={INK}
-                  fillOpacity={0.12}
+                  stroke={palette.flagged}
+                  fill={palette.flagged}
+                  fillOpacity={0.3}
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -237,7 +348,11 @@ export function CommandCenter() {
                 <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip formatter={(v) => inr(Number(v))} />
-                <Bar dataKey="leakage" fill={GREEN} radius={[8, 8, 0, 0]} />
+                <Bar
+                  dataKey="leakage"
+                  fill={palette.danger}
+                  radius={[8, 8, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -262,7 +377,13 @@ export function CommandCenter() {
                   tick={{ fontSize: 11 }}
                 />
                 <Tooltip />
-                <Bar dataKey="count" fill={INK} radius={[0, 8, 8, 0]} />
+                <Bar
+                  dataKey="count"
+                  fill={palette.flagged}
+                  radius={[0, 8, 8, 0]}
+                  cursor="pointer"
+                  onClick={() => navigate("/alerts")}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -277,20 +398,25 @@ export function CommandCenter() {
         >
           <div className="space-y-3">
             {funnel.map((f) => (
-              <div key={f.name}>
+              <Link
+                key={f.name}
+                to={`/claims?tab=${f.tab}`}
+                className="group -mx-2 block rounded-lg px-2 py-1 transition hover:bg-mist"
+              >
                 <div className="mb-1 flex justify-between text-xs">
-                  <span>{f.name}</span>
+                  <span className="group-hover:font-medium">{f.name}</span>
                   <span className="font-mono">{f.value}</span>
                 </div>
-                <div className="h-2 rounded-full bg-mist">
+                <div className="h-2 rounded-full bg-mist group-hover:bg-white">
                   <div
-                    className="h-2 rounded-full bg-brand"
+                    className="h-2 rounded-full transition-all duration-500"
                     style={{
-                      width: `${Math.max(8, (f.value / processed) * 100)}%`,
+                      background: f.color,
+                      width: `${Math.max(8, (f.value / (processed || 1)) * 100)}%`,
                     }}
                   />
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
           <p className="mt-4 text-xs text-mute">
@@ -322,11 +448,16 @@ export function CommandCenter() {
             </thead>
             <tbody>
               {hot.map((c) => (
-                <tr key={c.id} className="border-t border-line">
-                  <td className="py-3">
+                <tr
+                  key={c.id}
+                  onClick={() => navigate(`/claims/${c.id}`)}
+                  className="cursor-pointer border-t border-line transition-colors hover:bg-mist"
+                >
+                  <td className="py-3 pl-2">
                     <Link
-                      className="font-medium hover:text-brand-dark"
+                      className="font-medium text-ink hover:text-brand-dark hover:underline"
                       to={`/claims/${c.id}`}
+                      onClick={(e) => e.stopPropagation()}
                     >
                       {c.id}
                     </Link>
@@ -334,7 +465,9 @@ export function CommandCenter() {
                   <td>{c.claimant}</td>
                   <td>{c.domain}</td>
                   <td className="font-mono">{inr(c.requestedAmount)}</td>
-                  <td className="font-mono">{c.riskScore}</td>
+                  <td>
+                    <RiskPill score={c.riskScore} />
+                  </td>
                   <td>
                     <QueueBadge queue={c.queue} />
                   </td>

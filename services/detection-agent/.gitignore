@@ -10,3 +10,4 @@ datasets/*
 !datasets/.gitkeep
 catboost_info/
 .venv/
+*.db.bak

@@ -6,6 +6,7 @@ import {
   FileQuestion,
   Pencil,
   Save,
+  Search,
   Sparkles,
   X,
 } from "lucide-react";
@@ -16,9 +17,16 @@ import {
   PageHeader,
   Panel,
   QueueBadge,
+  RiskPill,
   SeverityBadge,
 } from "../components/ui";
-import { findingLabel, formatDate, inr, queueLabel } from "../lib/format";
+import {
+  findingLabel,
+  formatDate,
+  inr,
+  queueLabel,
+  severityBorder,
+} from "../lib/format";
 import { useAppStore } from "../store/useAppStore";
 import { useToast } from "../store/useToast";
 import type { Claim, ClaimNote, ClaimQueue } from "../types";
@@ -29,24 +37,37 @@ const decisions: Array<{
   label: string;
   hint: string;
   icon: LucideIcon;
+  /** Matches the queue badge colour so a decision looks like the status it produces. */
+  selected: string;
+  hover: string;
+  iconColor: string;
 }> = [
   {
     queue: "good",
     label: "Good claim",
     hint: "Clear to settle",
     icon: CheckCircle2,
+    selected: "border-emerald-500 bg-emerald-50 ring-2 ring-emerald-200",
+    hover: "hover:border-emerald-400 hover:bg-emerald-50/50",
+    iconColor: "text-emerald-600",
   },
   {
     queue: "unassessed",
     label: "Request documents",
     hint: "Evidence is incomplete",
     icon: FileQuestion,
+    selected: "border-amber-500 bg-amber-50 ring-2 ring-amber-200",
+    hover: "hover:border-amber-400 hover:bg-amber-50/50",
+    iconColor: "text-amber-600",
   },
   {
     queue: "special",
     label: "Special review",
     hint: "Needs supervisor judgement",
     icon: Sparkles,
+    selected: "border-violet-500 bg-violet-50 ring-2 ring-violet-200",
+    hover: "hover:border-violet-400 hover:bg-violet-50/50",
+    iconColor: "text-violet-600",
   },
 ];
 
@@ -137,7 +158,7 @@ function DecisionPanel({ claim }: { claim: Claim }) {
           className={`inline-flex items-center gap-1.5 text-xs ${dirty ? "text-amber-700" : "text-mute"}`}
         >
           <span
-            className={`h-1.5 w-1.5 rounded-full ${dirty ? "bg-amber-500" : "bg-brand"}`}
+            className={`h-1.5 w-1.5 rounded-full ${dirty ? "bg-amber-500" : "bg-emerald-500"}`}
           />
           {dirty
             ? "Unsaved changes"
@@ -165,16 +186,16 @@ function DecisionPanel({ claim }: { claim: Claim }) {
                   aria-checked={selected}
                   disabled={readOnly}
                   onClick={() => setPick(d.queue)}
-                  className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 ${
                     selected
-                      ? "border-brand bg-brand/10 ring-2 ring-brand/30"
-                      : "border-line bg-white hover:border-brand"
+                      ? d.selected
+                      : `border-line bg-white ${d.hover}`
                   }`}
                 >
                   <span className="flex items-center gap-2 text-sm font-medium">
                     <Icon
                       size={16}
-                      className={selected ? "text-brand-dark" : "text-mute"}
+                      className={selected ? d.iconColor : "text-mute"}
                     />
                     {d.label}
                   </span>
@@ -312,20 +333,28 @@ function ClaimView({ claim, claims }: { claim: Claim; claims: Claim[] }) {
         title={claim.id}
         description={`${claim.claimant} · ${claim.provider} · ${claim.city}`}
         actions={
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 text-sm text-mute hover:text-ink"
-            onClick={() => navigate(-1)}
-          >
-            <ArrowLeft size={16} /> Back
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 text-sm text-mute hover:text-ink"
+              onClick={() => navigate(-1)}
+            >
+              <ArrowLeft size={16} /> Back
+            </button>
+            <Link
+              to={`/claims/${claim.id}/investigate`}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-2 text-xs font-medium text-white transition hover:bg-black"
+            >
+              <Search size={14} /> Open investigation workspace
+            </Link>
+          </div>
         }
       />
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <QueueBadge queue={claim.queue} />
-        <span className="rounded-full bg-white px-3 py-1 text-xs">
-          Risk {claim.riskScore}
+        <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs">
+          Risk <RiskPill score={claim.riskScore} />
         </span>
         <span className="rounded-full bg-white px-3 py-1 text-xs">
           Source {claim.sourceFormat} ·{" "}
@@ -336,7 +365,7 @@ function ClaimView({ claim, claims }: { claim: Claim; claims: Claim[] }) {
           {formatDate(claim.incidentDate)}
         </span>
         {claim.missingFields.length ? (
-          <span className="rounded-full bg-ink px-3 py-1 text-xs text-brand">
+          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">
             Missing: {claim.missingFields.join(", ")}
           </span>
         ) : null}
@@ -357,21 +386,39 @@ function ClaimView({ claim, claims }: { claim: Claim; claims: Claim[] }) {
             {inr(claim.proposedSettlement)}
           </p>
         </div>
-        <div className="rounded-2xl border border-brand bg-brand p-4">
-          <p className="text-xs text-ink/70">Expected (counterfactual)</p>
-          <p className="mt-1 font-mono text-xl">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+          <p className="text-xs text-emerald-800/80">
+            Expected (counterfactual)
+          </p>
+          <p className="mt-1 font-mono text-xl text-emerald-800">
             {inr(claim.expectedSettlement)}
           </p>
         </div>
-        <div className="rounded-2xl border border-line bg-white p-4">
-          <p className="text-xs text-mute">Confirmed leakage</p>
-          <p className="mt-1 font-mono text-xl">
+        <div
+          className={`rounded-2xl border p-4 ${claim.confirmedLeakage > 0 ? "border-red-200 bg-red-50" : "border-line bg-white"}`}
+        >
+          <p
+            className={`text-xs ${claim.confirmedLeakage > 0 ? "text-red-800/80" : "text-mute"}`}
+          >
+            Confirmed leakage
+          </p>
+          <p
+            className={`mt-1 font-mono text-xl ${claim.confirmedLeakage > 0 ? "text-red-700" : ""}`}
+          >
             {inr(claim.confirmedLeakage)}
           </p>
         </div>
-        <div className="rounded-2xl border border-line bg-white p-4">
-          <p className="text-xs text-mute">Potential only</p>
-          <p className="mt-1 font-mono text-xl">
+        <div
+          className={`rounded-2xl border p-4 ${claim.potentialLeakage > 0 ? "border-amber-200 bg-amber-50" : "border-line bg-white"}`}
+        >
+          <p
+            className={`text-xs ${claim.potentialLeakage > 0 ? "text-amber-800/80" : "text-mute"}`}
+          >
+            Potential only
+          </p>
+          <p
+            className={`mt-1 font-mono text-xl ${claim.potentialLeakage > 0 ? "text-amber-800" : ""}`}
+          >
             {inr(claim.potentialLeakage)}
           </p>
         </div>
@@ -432,7 +479,7 @@ function ClaimView({ claim, claims }: { claim: Claim; claims: Claim[] }) {
             return (
               <article
                 key={f.id}
-                className="rounded-2xl border border-line bg-white p-4"
+                className={`rounded-2xl border border-l-4 border-line bg-white p-4 transition hover:shadow-md ${severityBorder[f.severity]}`}
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-medium">{f.title}</h3>
@@ -467,9 +514,9 @@ function ClaimView({ claim, claims }: { claim: Claim; claims: Claim[] }) {
                     aria-label="Confirm finding"
                     disabled={busy}
                     onClick={() => void review(f.id, "CONFIRM")}
-                    className="inline-flex items-center gap-1 rounded-lg bg-brand px-2.5 py-1.5 text-xs disabled:opacity-50"
+                    className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
                   >
-                    <Check size={14} /> Confirm
+                    <Check size={14} /> Confirm leakage
                   </button>
                   <button
                     type="button"

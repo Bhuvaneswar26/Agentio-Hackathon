@@ -4,39 +4,36 @@ import {
   Check,
   FileText,
   HelpCircle,
+  Library,
   Loader2,
   Quote,
+  RefreshCw,
+  ShieldAlert,
   Upload,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { EmptyState, PageHeader, Panel } from "../components/ui";
-import { extractFromFile } from "../lib/extract";
 import { inr } from "../lib/format";
+import { getMasterPolicy } from "../lib/masterPolicyApi";
+import { readDocument } from "../lib/readDocument";
 import {
   askPolicyQuestion,
   extractPolicyFromDocument,
   fetchRagStatus,
+  providerKeyName,
+  providerLabel,
   type PolicyAnswer,
   type PolicyExtraction,
   type RagStatus,
 } from "../lib/policyRag";
 import { useAppStore } from "../store/useAppStore";
 
-/** Read the document's plain text. PDFs and images reuse the ingest extractor (pdf.js / Tesseract). */
-async function readDocument(file: File): Promise<string> {
-  const name = file.name.toLowerCase();
-  if (name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".csv")) {
-    return file.text();
-  }
-  const payload = await extractFromFile(file);
-  const raw = payload.extraction.rawText;
-  if (!raw || raw.replace(/\s/g, "").length < 40) {
-    throw new Error(
-      "No readable text came out of that file. If it is a scanned policy, try a clearer scan.",
-    );
-  }
-  return raw;
-}
+const EXAMPLE_QUESTIONS = [
+  "Is room rent capped?",
+  "Are consumables payable?",
+  "What is the co-payment?",
+];
 
 function Confidence({ value }: { value: number }) {
   const pct = Math.round(value * 100);
@@ -93,8 +90,19 @@ function CitedRow({
 }
 
 export function PolicyReader() {
-  const { agentUrl, policyFromDocument, setPolicyFromDocument, log } =
-    useAppStore();
+  const {
+    agentUrl,
+    policyFromDocument,
+    setPolicyFromDocument,
+    masterPolicies,
+    loadMasterPolicies,
+    addMasterPolicy,
+    log,
+  } = useAppStore();
+  const [savedMasterId, setSavedMasterId] = useState<string | null>(null);
+  const [progress, setProgress] = useState("");
+  const [readInfo, setReadInfo] = useState("");
+  const [readWarning, setReadWarning] = useState("");
   const [text, setText] = useState("");
   const [sourceName, setSourceName] = useState("");
   const [policyNumber, setPolicyNumber] = useState("");
@@ -105,6 +113,10 @@ export function PolicyReader() {
   const [answer, setAnswer] = useState<PolicyAnswer | null>(null);
   const [asking, setAsking] = useState(false);
   const [ragStatus, setRagStatus] = useState<RagStatus | null>(null);
+
+  useEffect(() => {
+    void loadMasterPolicies();
+  }, [loadMasterPolicies]);
 
   useEffect(() => {
     let active = true;
@@ -126,14 +138,24 @@ export function PolicyReader() {
     setError("");
     setBusy(true);
     try {
-      const content = await readDocument(file);
-      setText(content);
+      setReadInfo("");
+      setReadWarning("");
+      const read = await readDocument(file, (page, total, stage) =>
+        setProgress(`${stage === "ocr" ? "Scanning" : "Reading"} page ${page} of ${total}…`),
+      );
+      setText(read.text);
+      setReadInfo(
+        `Read ${read.pages ? `${read.pages} page${read.pages === 1 ? "" : "s"} · ` : ""}${read.text.length.toLocaleString("en-IN")} characters from ${file.name}`,
+      );
+      setReadWarning(read.warning ?? "");
       setSourceName(file.name);
       setResult(null);
       setAnswer(null);
+      setSavedMasterId(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not read that file");
     } finally {
+      setProgress("");
       setBusy(false);
     }
   }
@@ -152,6 +174,7 @@ export function PolicyReader() {
         useLlm: true,
       });
       setResult(res);
+      setSavedMasterId(null);
       log({
         actor: "Policy reader",
         action: "Extracted policy terms from a document",
@@ -164,12 +187,14 @@ export function PolicyReader() {
     }
   }
 
-  async function ask() {
-    if (!question.trim() || !text.trim()) return;
+  async function ask(override?: string) {
+    const q = (override ?? question).trim();
+    if (!q || !text.trim()) return;
+    if (override !== undefined) setQuestion(override);
     setAsking(true);
     setError("");
     try {
-      setAnswer(await askPolicyQuestion(agentUrl, text, question));
+      setAnswer(await askPolicyQuestion(agentUrl, text, q));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Lookup failed");
     } finally {
@@ -182,6 +207,7 @@ export function PolicyReader() {
     setPolicyFromDocument({
       policy: result.policy,
       sourceName: sourceName || "pasted policy wording",
+      masterId: savedMasterId ?? undefined,
     });
     log({
       actor: "Policy reader",
@@ -190,6 +216,55 @@ export function PolicyReader() {
     });
   }
 
+  async function saveToMaster() {
+    if (!result) return;
+    setError("");
+    setBusy(true);
+    try {
+      setSavedMasterId(
+        await addMasterPolicy({
+          sourceName:
+            sourceName || `Pasted wording ${new Date().toLocaleString()}`,
+          text,
+          extraction: result,
+        }),
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? `Not saved to the master policy: ${err.message}`
+          : "Not saved to the master policy",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadFromMaster(id: string) {
+    if (!id) return;
+    setError("");
+    setBusy(true);
+    try {
+      // The list leaves the wording out to stay light, so fetch the full entry.
+      const entry = await getMasterPolicy(agentUrl, id);
+      setText(entry.text ?? "");
+      setSourceName(entry.sourceName);
+      setPolicyNumber(entry.policyNumber);
+      setResult(entry.extraction);
+      setAnswer(null);
+      setSavedMasterId(entry.id);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? `Could not load that policy: ${err.message}`
+          : "Could not load that policy",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const llmName = providerLabel(ragStatus?.llm_extraction?.provider);
   const policy = result?.policy;
   const cites = (policy?.extraction_citations ?? {}) as Record<
     string,
@@ -211,18 +286,21 @@ export function PolicyReader() {
         <HelpCircle className="mt-0.5 h-4 w-4 shrink-0" />
         <div>
           <p className="font-medium">
-            Gemini{" "}
+            {llmName}{" "}
             {ragStatus?.llm_extraction?.status === "AVAILABLE"
               ? "ready"
               : "not configured"}
             {ragStatus?.llm_extraction?.model
               ? ` · ${ragStatus.llm_extraction.model}`
               : ""}
+            {ragStatus?.llm_extraction?.framework === "langchain"
+              ? " · via LangChain"
+              : ""}
           </p>
           <p className="mt-0.5 text-xs">
             {ragStatus?.llm_extraction?.status === "AVAILABLE"
-              ? "Policy answers use retrieved clauses as context and require clause citations."
-              : "Set GEMINI_API_KEY in services/detection-agent/.env (never in the frontend or chat), then restart the backend. Retrieval-only clause answers remain available."}
+              ? "Policy answers use retrieved clauses as context and require clause citations. Guardrails decline questions that are not about the policy document."
+              : `Set ${providerKeyName(ragStatus?.llm_extraction?.provider)} in services/detection-agent/.env (never in the frontend or chat), then restart the backend. Retrieval-only clause answers remain available.`}
           </p>
         </div>
       </div>
@@ -238,13 +316,32 @@ export function PolicyReader() {
         {/* ---------------------------------------------------------------- input */}
         <div className="space-y-4 xl:col-span-2">
           <Panel title="Policy document">
+            {masterPolicies.length ? (
+              <select
+                value=""
+                onChange={(e) => void loadFromMaster(e.target.value)}
+                disabled={busy}
+                aria-label="Load a policy from the master policy"
+                className="mb-3 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm text-ink outline-none focus:border-brand"
+              >
+                <option value="">
+                  Load from master policy ({masterPolicies.length})…
+                </option>
+                {masterPolicies.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} · {p.sourceName}
+                  </option>
+                ))}
+              </select>
+            ) : null}
             <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed border-line bg-mist/40 px-4 py-6 text-center transition hover:border-brand">
               <Upload className="h-5 w-5 text-brand-dark" />
               <span className="text-sm font-medium text-ink">
                 Upload a policy wording
               </span>
               <span className="text-xs text-mute">
-                PDF, text, markdown or a scan (OCR runs in the browser)
+                {progress ||
+                  "PDF, text, markdown or a scan (OCR runs in the browser)"}
               </span>
               <input
                 type="file"
@@ -254,11 +351,23 @@ export function PolicyReader() {
               />
             </label>
 
+            {readInfo ? (
+              <p className="mt-3 text-xs text-brand-dark" role="status">
+                {readInfo}
+              </p>
+            ) : null}
+            {readWarning ? (
+              <p className="mt-1 text-xs text-amber-800" role="alert">
+                {readWarning}
+              </p>
+            ) : null}
+
             <textarea
               value={text}
               onChange={(e) => {
                 setText(e.target.value);
                 setResult(null);
+                setReadInfo("");
               }}
               rows={12}
               placeholder={
@@ -276,7 +385,7 @@ export function PolicyReader() {
               />
             </div>
             <p className="mt-1 text-xs text-mute">
-              Gemini runs over retrieved clauses and must cite the policy
+              {llmName} runs over retrieved clauses and must cite the policy
               wording. The rule-based extraction also runs, and the engine key
               stays on the backend.
             </p>
@@ -322,49 +431,89 @@ export function PolicyReader() {
               </button>
             </div>
             {answer ? (
-              answer.answered ? (
-                <div className="mt-3 space-y-2">
-                  {answer.clauses.slice(0, 3).map((c) => (
-                    <div
-                      key={c.citation + c.text.slice(0, 20)}
-                      className="rounded-xl border border-line bg-mist/30 p-3"
-                    >
-                      <p className="text-xs font-medium text-brand-dark">
-                        {c.citation}
-                      </p>
-                      <p className="mt-1 whitespace-pre-wrap text-xs text-ink">
-                        {c.text}
-                      </p>
-                    </div>
-                  ))}
-                  {answer.answer ? (
-                    <div className="rounded-xl border border-brand/40 bg-brand/10 p-3">
-                      <p className="text-xs font-semibold text-brand-dark">
-                        {answer.answer_source === "retrieval_fallback"
-                          ? "Retrieved policy answer · Gemini unavailable"
-                          : answer.answer_source === "retrieval"
-                            ? "Retrieved policy answer"
-                            : `Gemini answer${answer.model ? ` · ${answer.model}` : ""}`}
-                      </p>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-ink">
-                        {answer.answer}
-                      </p>
-                      {answer.cited_clauses?.length ? (
-                        <p className="mt-1 text-xs text-mute">
-                          Cited clauses: {answer.cited_clauses.join(", ")}
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  {answer.llm_notice ? (
-                    <p className="text-xs text-amber-800" role="status">
-                      {answer.llm_notice}
+              answer.out_of_scope ? (
+                <div
+                  className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3"
+                  role="status"
+                >
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-900">
+                    <ShieldAlert className="h-3.5 w-3.5" />
+                    {answer.scope_category === "prompt_injection"
+                      ? "Declined · instruction override"
+                      : "Out of scope"}
+                  </p>
+                  <p className="mt-1 text-sm text-amber-950">{answer.reason}</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {EXAMPLE_QUESTIONS.map((example) => (
+                      <button
+                        key={example}
+                        type="button"
+                        onClick={() => void ask(example)}
+                        disabled={asking}
+                        className="rounded-full border border-amber-300 bg-white px-2.5 py-1 text-xs text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"
+                      >
+                        {example}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : answer.answered && answer.answer ? (
+                <div className="mt-3 rounded-xl border border-brand/40 bg-brand/10 p-3">
+                  <p className="text-xs font-semibold text-brand-dark">
+                    {providerLabel(answer.provider ?? ragStatus?.llm_extraction?.provider)} answer
+                    {answer.model ? ` · ${answer.model}` : ""}
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-ink">
+                    {answer.answer}
+                  </p>
+                  {answer.stated_in_policy === false ? (
+                    <p className="mt-1 text-xs text-amber-800">
+                      The policy wording does not state this, so nothing is
+                      cited.
                     </p>
                   ) : null}
-                  <p className="text-xs text-mute">
-                    Answers use retrieved clauses only; the original wording is
-                    quoted above for verification.
+                  {answer.cited_clauses?.length ? (
+                    <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-mute">
+                      Based on
+                      {answer.cited_clauses.map((id) => (
+                        <span
+                          key={id}
+                          className="rounded-full bg-white px-2 py-0.5 font-mono text-[11px] text-brand-dark"
+                        >
+                          clause {id}
+                        </span>
+                      ))}
+                    </p>
+                  ) : null}
+                </div>
+              ) : answer.answered ? (
+                // The model did not answer. Say why; the retrieved clause text is deliberately not shown.
+                <div
+                  className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3"
+                  role="alert"
+                >
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-900">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    {providerLabel(answer.provider ?? ragStatus?.llm_extraction?.provider)} could not answer
                   </p>
+                  <p className="mt-1 text-sm text-amber-950">
+                    {answer.llm_error?.message ??
+                      answer.llm_notice ??
+                      `${providerLabel(answer.provider ?? ragStatus?.llm_extraction?.provider)} could not complete this request.`}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void ask()}
+                    disabled={asking}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    {asking ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3 w-3" />
+                    )}
+                    Try again
+                  </button>
                 </div>
               ) : (
                 <p className="mt-3 text-sm text-mute">
@@ -387,14 +536,35 @@ export function PolicyReader() {
               <Panel
                 title="Extracted terms"
                 action={
-                  <button
-                    type="button"
-                    onClick={applyToIngest}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-ink transition hover:bg-brand/80"
-                  >
-                    <Check className="h-3.5 w-3.5" />
-                    Use for next ingest
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {savedMasterId ? (
+                      <Link
+                        to="/master-policy"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-brand-dark transition hover:border-brand"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                        In master policy
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void saveToMaster()}
+                        disabled={busy}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink transition hover:border-brand"
+                      >
+                        <Library className="h-3.5 w-3.5" />
+                        Add to master policy
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={applyToIngest}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-ink transition hover:bg-brand/80"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      Use for next ingest
+                    </button>
+                  </div>
                 }
               >
                 <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-mute">
@@ -402,7 +572,7 @@ export function PolicyReader() {
                   <span>{result.document.clauses_detected} clauses</span>
                   <span>{result.facts.length} cited facts</span>
                   <span>
-                    Gemini pass:{" "}
+                    {llmName} pass:{" "}
                     {result.llm_extraction.status
                       .toLowerCase()
                       .replace(/_/g, " ")}

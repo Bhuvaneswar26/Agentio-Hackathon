@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { CheckCircle2, Info, TriangleAlert, X } from "lucide-react";
-import { queueLabel, severityTone } from "../lib/format";
+import { Link } from "react-router-dom";
+import { ArrowUpRight, CheckCircle2, Info, TriangleAlert, X } from "lucide-react";
+import { queueLabel, riskTone, severityDot, severityTone } from "../lib/format";
 import { useToast } from "../store/useToast";
 import type { ClaimQueue, Severity } from "../types";
 
@@ -59,54 +60,98 @@ export function Toaster() {
   );
 }
 
+export type KpiTone = "neutral" | "good" | "warn" | "bad";
+
+const kpiTone: Record<KpiTone, { card: string; label: string; value: string }> =
+  {
+    neutral: {
+      card: "border-line bg-white",
+      label: "text-mute",
+      value: "text-ink",
+    },
+    good: {
+      card: "border-emerald-200 bg-emerald-50",
+      label: "text-emerald-800/80",
+      value: "text-emerald-800",
+    },
+    warn: {
+      card: "border-amber-200 bg-amber-50",
+      label: "text-amber-800/80",
+      value: "text-amber-800",
+    },
+    bad: {
+      card: "border-red-200 bg-red-50",
+      label: "text-red-800/80",
+      value: "text-red-700",
+    },
+  };
+
+/** A headline number. Pass `to` to make the whole card a link to the view behind the number. */
 export function KpiCard({
   label,
   value,
   hint,
-  accent = false,
+  tone = "neutral",
+  to,
 }: {
   label: string;
   value: string;
   hint?: string;
-  accent?: boolean;
+  tone?: KpiTone;
+  to?: string;
 }) {
-  return (
-    <div
-      className={`rounded-2xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-        accent ? "border-brand bg-brand text-ink" : "border-line bg-white"
-      }`}
-    >
+  const t = kpiTone[tone];
+  const body = (
+    <>
+      <div className="flex items-start justify-between gap-2">
+        <p className={`text-xs font-medium uppercase tracking-wide ${t.label}`}>
+          {label}
+        </p>
+        {to ? (
+          <ArrowUpRight
+            size={14}
+            className={`shrink-0 opacity-0 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:opacity-100 ${t.label}`}
+          />
+        ) : null}
+      </div>
       <p
-        className={`text-xs font-medium uppercase tracking-wide ${accent ? "text-ink/70" : "text-mute"}`}
+        className={`mt-2 font-mono text-2xl font-semibold tracking-tight ${t.value}`}
       >
-        {label}
-      </p>
-      <p className="mt-2 font-mono text-2xl font-semibold tracking-tight">
         {value}
       </p>
-      {hint ? (
-        <p className={`mt-1 text-xs ${accent ? "text-ink/70" : "text-mute"}`}>
-          {hint}
-        </p>
-      ) : null}
-    </div>
+      {hint ? <p className={`mt-1 text-xs ${t.label}`}>{hint}</p> : null}
+    </>
+  );
+  const base = `group block rounded-2xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${t.card}`;
+  return to ? (
+    <Link to={to} className={`${base} focus-visible:-translate-y-0.5`}>
+      {body}
+    </Link>
+  ) : (
+    <div className={base}>{body}</div>
   );
 }
 
+const queueTone: Record<ClaimQueue, { badge: string; dot: string }> = {
+  intake: { badge: "bg-slate-100 text-slate-700", dot: "bg-slate-400" },
+  good: { badge: "bg-emerald-100 text-emerald-800", dot: "bg-emerald-500" },
+  flagged: { badge: "bg-orange-100 text-orange-800", dot: "bg-orange-500" },
+  unassessed: {
+    badge: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-300",
+    dot: "bg-amber-500",
+  },
+  special: { badge: "bg-violet-100 text-violet-800", dot: "bg-violet-500" },
+  confirmed: { badge: "bg-red-600 text-white", dot: "bg-white" },
+  dismissed: { badge: "bg-slate-100 text-slate-500", dot: "bg-slate-300" },
+};
+
 export function QueueBadge({ queue }: { queue: ClaimQueue }) {
-  const map: Record<ClaimQueue, string> = {
-    intake: "bg-mist text-ink",
-    good: "bg-brand/20 text-[#0b6b45]",
-    flagged: "bg-ink text-white",
-    unassessed: "bg-white border border-line text-mute",
-    special: "bg-brand text-ink",
-    confirmed: "bg-[#111] text-brand",
-    dismissed: "bg-mist text-mute",
-  };
+  const tone = queueTone[queue];
   return (
     <span
-      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${map[queue]}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${tone.badge}`}
     >
+      <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
       {queueLabel[queue]}
     </span>
   );
@@ -115,9 +160,24 @@ export function QueueBadge({ queue }: { queue: ClaimQueue }) {
 export function SeverityBadge({ severity }: { severity: Severity }) {
   return (
     <span
-      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${severityTone[severity]}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${severityTone[severity]}`}
     >
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${severity === "critical" ? "animate-pulse-smooth bg-white" : severityDot[severity]}`}
+      />
       {severity}
+    </span>
+  );
+}
+
+/** Risk score as a coloured pill: green is low risk, amber is medium, red is high. */
+export function RiskPill({ score }: { score: number }) {
+  return (
+    <span
+      className={`inline-flex min-w-9 items-center justify-center rounded-full px-2.5 py-0.5 font-mono text-xs font-semibold ${riskTone(score)}`}
+      title={`Risk score ${score} of 100`}
+    >
+      {score}
     </span>
   );
 }

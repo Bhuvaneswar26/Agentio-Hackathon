@@ -1,0 +1,15 @@
+ORBIT BODY SHOP - REPAIR ESTIMATE
+Garage: Orbit Body Shop
+Owner: Neha Kulkarni
+Policy: MO-33018
+Vehicle No: MH12AB1234
+Estimate No: EST-5521
+Estimate Date: 13/10/2026
+
+Item | Qty | Amount
+Front bumper replacement | 1 | 22,000
+Headlamp assembly (left) | 1 | 15,000
+Paint and labour | 1 | 14,500
+Bonnet repair | 1 | 12,000
+
+Total Estimate: 63,500

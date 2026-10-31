@@ -48,7 +48,7 @@ async function extractPdf(file: File): Promise<DetectionPayload> {
   );
 }
 
-async function ocrSource(image: File | HTMLCanvasElement) {
+export async function ocrSource(image: File | HTMLCanvasElement) {
   const tesseract = await import("tesseract.js");
   const recognize =
     tesseract.recognize ??

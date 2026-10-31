@@ -1,18 +1,21 @@
 """Policy-document RAG endpoints: read a policy wording into a structured, cited policy."""
 from __future__ import annotations
 
+import logging
 from datetime import date
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from app.core.utils import jsonable
-from app.rag.llm_extractor import answer_with_gemini
+from app.rag.guardrails import OutOfScopeError, ScopeDecision, check_question, out_of_scope_payload
+from app.rag.llm_extractor import answer_with_llm
 from app.rag.llm_extractor import available as llm_available
-from app.rag.llm_extractor import configured_model, configured_provider
+from app.rag.llm_extractor import configured_model, configured_provider, describe_llm_error, provider_label
 from app.rag.service import DEFAULT_MIN_CONFIDENCE, PolicyDocumentIndex, answer_question, extract_policy
 
 router = APIRouter(prefix="/api/v1/policy", tags=["policy-rag"])
+log = logging.getLogger(__name__)
 
 MAX_DOCUMENT_CHARS = 2_000_000
 
@@ -32,7 +35,7 @@ class PolicyQuestionRequest(BaseModel):
     document_text: str = Field(min_length=1)
     question: str = Field(min_length=2)
     top_k: int = Field(default=4, ge=1, le=15)
-    use_llm: bool = Field(default=True, description="Generate a grounded answer with Gemini")
+    use_llm: bool = Field(default=True, description="Generate a grounded answer with the configured language model")
 
 
 def _index(text: str, policy_number: str | None = None) -> PolicyDocumentIndex:
@@ -75,24 +78,39 @@ async def extract_upload(file: UploadFile = File(...), policy_number: str | None
     return jsonable({"success": True, "filename": file.filename, **result.to_dict()})
 
 
-@router.post("/ask", summary="Retrieve the policy clauses that answer a question, with citations")
+@router.post("/ask", summary="Answer a question from the policy clauses, with citations; out-of-scope questions are declined")
 def ask(body: PolicyQuestionRequest):
     index = _index(body.document_text)
+    hits = index.search(body.question, top_k=body.top_k)
+
+    # Guardrail layer 1: decline before any retrieval result or model call is used.
+    decision = check_question(body.question, hits)
+    if not decision.in_scope:
+        return jsonable({"success": True, **out_of_scope_payload(body.question, decision)})
+
     result = answer_question(index, body.question, top_k=body.top_k)
     if body.use_llm and result["answered"]:
-        hits = index.search(body.question, top_k=body.top_k)
         try:
-            result.update(answer_with_gemini(body.question, hits))
-            result["answer_source"] = "gemini_grounded"
-        except Exception:
-            # Keep the retrieved, quoted clauses usable when Gemini is not configured or unavailable.
-            # Never replace the fallback with an unsupported generated answer.
+            result.update(answer_with_llm(body.question, hits))
+            result["answer_source"] = "llm_grounded"
+        except OutOfScopeError as refusal:
+            # Guardrail layer 2: the model judged the question to be outside the policy's scope.
+            declined = ScopeDecision(False, "off_topic", refusal.reason)
+            return jsonable({"success": True, **out_of_scope_payload(body.question, declined),
+                             "provider": configured_provider(), "model": configured_model()})
+        except Exception as exc:
+            # Keep the retrieved, quoted clauses in the response when the language model is not configured or fails,
+            # but never replace them with an unsupported generated answer. The reason is returned so the
+            # caller can tell the user why, instead of guessing.
             available, reason = llm_available()
+            if available:
+                log.warning("%s answer failed: %s: %s", provider_label(), type(exc).__name__, str(exc)[:300])
+            kind, message = describe_llm_error(exc) if available else ("unavailable", f"{provider_label()} is not ready: {reason}.")
             result["answer_source"] = "retrieval_fallback"
+            result["llm_error"] = {"kind": kind, "message": message}
             result["llm_notice"] = (
-                f"Gemini is not ready: {reason}. Showing retrieved policy clauses instead."
-                if not available else
-                "Gemini could not complete this request. Showing retrieved policy clauses instead."
+                f"{provider_label()} is not ready: {reason}. Showing retrieved policy clauses instead."
+                if not available else f"{message} Showing retrieved policy clauses instead."
             )
             result["provider"] = configured_provider()
             result["model"] = configured_model()
@@ -110,7 +128,12 @@ def rag_status():
         "rule_based_extraction": {"status": "AVAILABLE",
                                   "fields": ["deductible", "copayment_percentage", "sum_insured", "sublimits",
                                              "exclusions", "coverage", "waiting_periods"]},
+        "guardrails": {"status": "ACTIVE", "scope": "questions about the uploaded policy document only",
+                       "layers": ["deterministic pre-check (empty, prompt injection, off-topic)",
+                                  "model-side in_scope check under a written guardrail context",
+                                  "citations must come from the retrieved clauses"]},
         "llm_extraction": {"status": "AVAILABLE" if ok else "UNAVAILABLE", "reason": reason,
                            "provider": configured_provider(), "model": configured_model(),
-                           "note": "Optional for extraction; the Ask action requires Gemini."},
+                           "framework": "langchain" if configured_provider() in ("gemini", "sarvam") else None,
+                           "note": "Optional for extraction; the Ask action requires a configured language model."},
     }

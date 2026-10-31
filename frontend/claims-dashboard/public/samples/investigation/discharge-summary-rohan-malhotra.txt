@@ -1,0 +1,9 @@
+CITY CARE HOSPITAL - DISCHARGE SUMMARY
+Hospital: City Care Hospital
+Patient: Rohan Malhotra
+Policy: HL-55021
+Date of Admission: 04/10/2026
+Date of Discharge: 05/10/2026
+Diagnosis: Acute appendicitis
+Procedure: Laparoscopic appendectomy
+Condition at discharge: Stable, advised rest for one week and review after ten days.

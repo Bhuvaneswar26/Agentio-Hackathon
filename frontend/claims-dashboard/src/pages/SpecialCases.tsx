@@ -1,4 +1,4 @@
-import { PageHeader, Panel, QueueBadge, EmptyState } from '../components/ui'
+import { PageHeader, Panel, QueueBadge, EmptyState, RiskPill } from '../components/ui'
 import { inr } from '../lib/format'
 import { useQueueMove } from '../lib/useQueueMove'
 import { useAppStore } from '../store/useAppStore'
@@ -30,23 +30,25 @@ export function SpecialCases() {
               <p className="text-sm text-mute">{c.specialReason || 'No reason captured yet.'}</p>
               <div className="mt-3 flex flex-wrap gap-4 text-sm">
                 <span>Requested {inr(c.requestedAmount)}</span>
-                <span>Risk {c.riskScore}</span>
+                <span className="inline-flex items-center gap-2">
+                  Risk <RiskPill score={c.riskScore} />
+                </span>
                 <span>{c.provider}</span>
               </div>
               {c.supervisorNote ? <p className="mt-2 rounded-xl bg-mist px-3 py-2 text-sm">{c.supervisorNote}</p> : null}
               <div className="mt-4 flex flex-wrap gap-2">
-                <Link to={`/claims/${c.id}`} className="rounded-full border border-line px-3 py-1.5 text-xs">
+                <Link to={`/claims/${c.id}`} className="rounded-full border border-line px-3 py-1.5 text-xs hover:border-ink/40 hover:bg-mist">
                   Open evidence
                 </Link>
                 {!locked ? (
                   <>
-                    <button type="button" className="rounded-full bg-brand px-3 py-1.5 text-xs" onClick={() => moveQueue(c.id, 'good')}>
+                    <button type="button" className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700" onClick={() => moveQueue(c.id, 'good')}>
                       Release as good
                     </button>
-                    <button type="button" className="rounded-full bg-ink px-3 py-1.5 text-xs text-white" onClick={() => moveQueue(c.id, 'confirmed')}>
+                    <button type="button" className="rounded-full bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700" onClick={() => moveQueue(c.id, 'confirmed')}>
                       Confirm leakage
                     </button>
-                    <button type="button" className="rounded-full border border-line px-3 py-1.5 text-xs" onClick={() => moveQueue(c.id, 'unassessed')}>
+                    <button type="button" className="rounded-full border border-amber-300 px-3 py-1.5 text-xs text-amber-800 hover:bg-amber-50" onClick={() => moveQueue(c.id, 'unassessed')}>
                       Send back for evidence
                     </button>
                   </>

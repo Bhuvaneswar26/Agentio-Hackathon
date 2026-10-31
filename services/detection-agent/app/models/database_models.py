@@ -80,6 +80,23 @@ class Policy(Base):
     raw_json: Mapped[dict] = mapped_column(JsonType)
 
 
+class MasterPolicyRow(Base):
+    """A policy document kept in the master library: its wording plus the terms read from it.
+
+    Unlike `policies` (a snapshot taken per analysis), this is the reusable source a claim is assessed against.
+    """
+    __tablename__ = "master_policies"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200))
+    source_name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    policy_number: Mapped[str] = mapped_column(String(100), index=True)
+    policy_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    document_text: Mapped[str] = mapped_column(Text)
+    extraction_json: Mapped[dict] = mapped_column(JsonType)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
 class InvoiceItemRow(Base):
     __tablename__ = "invoice_items"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)

@@ -255,26 +255,51 @@ def test_llm_path_is_optional_and_reports_why_it_is_off(extraction):
     assert extraction.llm.get("reason") or extraction.llm.get("model")
 
 
-def test_gemini_provider_uses_structured_output_and_keeps_citations(index, monkeypatch):
+class _FakeChat:
+    """Stands in for ChatGoogleGenerativeAI: records the prompt and returns a canned structured reply."""
+
+    def __init__(self, reply):
+        self.reply = reply
+        self.schema = None
+        self.kwargs = None
+        self.prompt = None
+
+    def with_structured_output(self, schema, **kwargs):
+        from langchain_core.runnables import RunnableLambda
+
+        self.schema, self.kwargs = schema, kwargs
+
+        def run(prompt_value):
+            self.prompt = prompt_value.to_messages()
+            return self.reply
+
+        return RunnableLambda(run)
+
+
+def test_gemini_provider_runs_through_langchain_and_keeps_citations(index, monkeypatch):
+    from langchain_core.messages import AIMessage
+
     settings = SimpleNamespace(
         llm_provider="gemini", gemini_api_key="test-key",
         anthropic_api_key="", anthropic_auth_token="")
     monkeypatch.setattr(llm_extractor, "get_settings", lambda: settings)
     hits = index.retriever.search("deductible", top_k=1, topics=["deductible"])
-    response = SimpleNamespace(
-        text='{"deductible":{"value":10000,"clause_id":"1.2",'
-             '"snippet":"deductible of Rs. 10,000","confidence":0.9}}',
-        usage_metadata=SimpleNamespace(prompt_token_count=12, candidates_token_count=8))
+    fake = _FakeChat({
+        "raw": AIMessage(content="", usage_metadata={"input_tokens": 12, "output_tokens": 8, "total_tokens": 20}),
+        "parsed": LLMPolicyExtraction(deductible=LLMScalar(
+            value=10000, clause_id="1.2", snippet="deductible of Rs. 10,000", confidence=0.9)),
+        "parsing_error": None,
+    })
+    monkeypatch.setattr(llm_extractor, "_chat_model", lambda settings, **kw: fake)
 
-    with patch("google.genai.Client") as client_type:
-        client_type.return_value.models.generate_content.return_value = response
-        facts, info = llm_extractor.extract_with_llm(hits)
+    facts, info = llm_extractor.extract_with_llm(hits)
 
     assert len(facts) == 1
     assert facts[0].clause_id == "1.2"
     assert info["provider"] == "gemini"
     assert info["model"] == "gemini-3.6-flash"
     assert info["input_tokens"] == 12
-    request = client_type.return_value.models.generate_content.call_args.kwargs
-    assert request["config"].response_mime_type == "application/json"
-    assert request["config"].response_schema is LLMPolicyExtraction
+    assert info["output_tokens"] == 8
+    assert fake.schema is LLMPolicyExtraction
+    assert fake.kwargs == {"include_raw": True}
+    assert fake.prompt[0].content == llm_extractor.SYSTEM

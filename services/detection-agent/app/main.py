@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import analyze, dashboard, detect, findings, policy
+from app.api import analyze, dashboard, detect, findings, master_policy, policy
 from app.core.config import get_settings
 from app.core.database import init_db
 from app.core.logging import setup_logging
@@ -41,6 +41,7 @@ def create_app() -> FastAPI:
     app.include_router(dashboard.router)
     app.include_router(detect.router)
     app.include_router(policy.router)
+    app.include_router(master_policy.router)
 
     @app.get("/health", tags=["ops"])
     def health():
