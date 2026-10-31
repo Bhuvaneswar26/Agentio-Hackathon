@@ -17,8 +17,9 @@ joblib>=1.4
 datasets>=2.20
 pyarrow>=16
 python-multipart>=0.0.9
-# Optional: enables the Claude grounded-extraction path of the policy RAG pipeline.
-# Retrieval and rule-based extraction run without it.
+# Optional: install the provider you select with CG_LLM_PROVIDER for grounded RAG extraction.
+# Retrieval and rule-based extraction run without either SDK.
 anthropic>=2.3
+google-genai>=1.0
 pytest>=8
 httpx>=0.27

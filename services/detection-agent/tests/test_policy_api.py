@@ -6,6 +6,7 @@ import io
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.config import get_settings
 from app.main import create_app
 
 DOC = """
@@ -43,6 +44,18 @@ def test_rag_status_reports_each_component(client):
     # The LLM path is optional; whichever way it resolves, it must explain itself.
     assert body["llm_extraction"]["status"] in ("AVAILABLE", "UNAVAILABLE")
     assert body["llm_extraction"]["reason"]
+
+
+def test_rag_status_supports_gemini_provider(client, monkeypatch):
+    monkeypatch.setenv("CG_LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    get_settings.cache_clear()
+    try:
+        body = client.get("/api/v1/policy/rag/status").json()["llm_extraction"]
+    finally:
+        get_settings.cache_clear()
+    assert body["provider"] == "gemini"
+    assert body["model"] == "gemini-2.5-flash"
 
 
 def test_extract_returns_a_policy_with_citations(client):
@@ -94,10 +107,32 @@ def test_extracted_policy_is_accepted_by_the_analysis_endpoint(client):
 
 def test_ask_returns_clauses_with_citations(client):
     body = client.post("/api/v1/policy/ask",
-                       json={"document_text": DOC, "question": "what is the co-payment?"}).json()
+                       json={"document_text": DOC, "question": "what is the co-payment?",
+                             "use_llm": False}).json()
     assert body["answered"] is True
     assert "Clause 1.3" in body["best_citation"]
     assert "15%" in body["clauses"][0]["text"]
+
+
+def test_ask_automatically_uses_gemini(client, monkeypatch):
+    from app.api import policy as policy_api
+
+    def fake_answer(question, hits):
+        assert question == "what is the co-payment?"
+        assert any(hit.chunk.clause_id == "1.3" for hit in hits)
+        return {
+            "answer": "The insured bears 15% as co-payment.",
+            "cited_clauses": ["1.3"],
+            "provider": "gemini",
+            "model": "gemini-2.5-flash",
+        }
+
+    monkeypatch.setattr(policy_api, "answer_with_gemini", fake_answer)
+    body = client.post("/api/v1/policy/ask",
+                       json={"document_text": DOC, "question": "what is the co-payment?"}).json()
+    assert body["answer"] == "The insured bears 15% as co-payment."
+    assert body["cited_clauses"] == ["1.3"]
+    assert body["provider"] == "gemini"
 
 
 def test_a_document_with_no_clauses_is_rejected_not_guessed(client):

@@ -32,7 +32,7 @@ The React dashboard (`frontend/claims-dashboard`) posts its `DetectionPayload` (
 | GET | `/api/v1/dashboard/summary` | Aggregates |
 | POST | `/api/v1/policy/extract` | Read a policy document into a structured, clause-cited policy |
 | POST | `/api/v1/policy/extract/upload` | Same, from a text/markdown/CSV upload |
-| POST | `/api/v1/policy/ask` | Retrieve the clauses that answer a question, quoted verbatim |
+| POST | `/api/v1/policy/ask` | Answer a policy question with Gemini and return supporting clauses |
 | GET | `/api/v1/policy/rag/status` | RAG component availability |
 | GET | `/health`, `/api/v1/models/status` | Ops |
 
@@ -63,9 +63,14 @@ Reads an unstructured policy wording and emits the `policy` block `/api/v1/analy
 - **Extraction** is rule-based and cue-gated: a number becomes a limit only if the clause uses
   limiting language, so *"the premium is Rs. 12,000"* never becomes a benefit cap. Each fact carries
   its clause, the snippet that justifies it, and a confidence capped by the retrieval score.
-- **Optional Claude pass** (`use_llm: true`, needs `ANTHROPIC_API_KEY`) runs `claude-opus-5-5` over
-  the *retrieved clauses only* and must cite a supplied `clause_id`; a fact citing anything else is
-  dropped. Retrieval and rule-based extraction work fully without it.
+- **Grounded LLM pass** (`use_llm: true`) runs over the *retrieved clauses only* and must cite a
+  supplied `clause_id`; a fact citing anything else is dropped. The dashboard runs this
+  automatically with Gemini. Set `CG_LLM_PROVIDER=gemini` and `GEMINI_API_KEY` in the local
+  git-ignored `.env` file; Gemini uses `gemini-2.5-flash`. Claude remains available for backend
+  extraction by setting `CG_LLM_PROVIDER=claude` and `ANTHROPIC_API_KEY`. The Ask action always
+  uses Gemini and returns the original supporting clauses alongside the generated answer.
+  Retrieval and rule-based extraction continue to work without an LLM key. The active extraction
+  provider and its availability are reported by `GET /api/v1/policy/rag/status`.
 
 Three guarantees the rule engine depends on:
 

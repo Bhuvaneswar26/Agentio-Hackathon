@@ -72,6 +72,10 @@ export type PolicyExtraction = {
 export type PolicyAnswer = {
   answered: boolean
   reason?: string
+  answer?: string
+  provider?: string
+  model?: string
+  cited_clauses?: string[]
   best_citation?: string
   confidence?: number
   clauses: Array<{ citation: string; text: string; score: number; clause_id: string | null }>
@@ -116,6 +120,7 @@ export function askPolicyQuestion(agentUrl: string, documentText: string, questi
   return post<PolicyAnswer>(agentUrl, '/api/v1/policy/ask', {
     document_text: documentText,
     question,
+    use_llm: true,
   })
 }
 

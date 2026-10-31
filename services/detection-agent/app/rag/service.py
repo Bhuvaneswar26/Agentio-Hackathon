@@ -284,7 +284,8 @@ def extract_policy(
 
     policy["extraction_citations"] = citations
     policy["extraction_method"] = ("RAG: TF-IDF clause retrieval + rule-based extraction"
-                                   + (" + Claude grounded extraction" if llm_info.get("status") == "AVAILABLE"
+                                   + (f" + {llm_info.get('provider', 'LLM').title()} grounded extraction"
+                                      if llm_info.get("status") == "AVAILABLE"
                                       else ""))
 
     return PolicyExtraction(

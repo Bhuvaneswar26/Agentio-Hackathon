@@ -1,23 +1,26 @@
-"""Optional Claude-backed extraction over retrieved policy clauses.
+"""Optional Claude- or Gemini-backed extraction over retrieved policy clauses.
 
-This is the generative half of the RAG pipeline and it is strictly optional: when the `anthropic`
-package or an API key is absent the service runs on rule-based extraction alone and says so. The
-model only ever sees clauses the retriever selected, must cite the clause id it used for each fact,
-and is told to return nothing rather than guess -- so an LLM fact is still traceable to a clause.
+This is the generative half of the RAG pipeline and it is strictly optional: when the selected
+provider's package or API key is absent the service runs on rule-based extraction alone and says
+so. The model only ever sees clauses the retriever selected, must cite the clause id it used for
+each fact, and is told to return nothing rather than guess -- so an LLM fact is still traceable.
 """
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.core.config import Settings, get_settings
 from app.rag.extractors import ExtractedFact
 from app.rag.retriever import Retrieved
 
 log = logging.getLogger(__name__)
 
-MODEL = "claude-opus-5-5"
+CLAUDE_MODEL = "claude-opus-5-5"
+GEMINI_MODEL = "gemini-2.5-flash"
 
 SYSTEM = """You extract insurance policy terms from policy wording, for a claims-leakage engine.
 
@@ -76,17 +79,46 @@ class LLMPolicyExtraction(BaseModel):
     unclear_clauses: list[str] = Field(default_factory=list)
 
 
-def available() -> tuple[bool, str]:
-    """Whether the LLM extraction path can run, and why not when it cannot."""
-    try:
-        import anthropic  # noqa: F401
-    except ImportError:
-        return False, "anthropic package not installed (pip install anthropic)"
-    import os
+class LLMPolicyAnswer(BaseModel):
+    answer: str
+    clause_ids: list[str]
 
-    if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
-        return False, "no ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN in the environment"
-    return True, "ready"
+
+def configured_provider(settings: Settings | None = None) -> str:
+    return (settings or get_settings()).llm_provider.strip().lower()
+
+
+def configured_model(settings: Settings | None = None) -> str:
+    provider = configured_provider(settings)
+    if provider == "gemini":
+        return GEMINI_MODEL
+    if provider == "claude":
+        return CLAUDE_MODEL
+    return "unknown"
+
+
+def available(settings: Settings | None = None) -> tuple[bool, str]:
+    """Whether the LLM extraction path can run, and why not when it cannot."""
+    settings = settings or get_settings()
+    provider = configured_provider(settings)
+    if provider == "claude":
+        try:
+            import anthropic  # noqa: F401
+        except ImportError:
+            return False, "anthropic package not installed (pip install anthropic)"
+        if not (settings.anthropic_api_key or settings.anthropic_auth_token
+                or os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
+            return False, "no ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN in the environment"
+        return True, "ready"
+    if provider == "gemini":
+        try:
+            from google import genai  # noqa: F401
+        except ImportError:
+            return False, "google-genai package not installed (pip install google-genai)"
+        if not (settings.gemini_api_key or os.environ.get("GEMINI_API_KEY")):
+            return False, "no GEMINI_API_KEY in the environment"
+        return True, "ready"
+    return False, f"unsupported CG_LLM_PROVIDER {settings.llm_provider!r}; choose 'claude' or 'gemini'"
 
 
 def _clause_block(hits: list[Retrieved]) -> str:
@@ -116,7 +148,8 @@ def _as_facts(extraction: LLMPolicyExtraction, by_clause: dict[str, Retrieved]) 
             field=field, value=value, category=category, confidence=min(float(confidence), 0.95),
             method="llm_grounded", clause_id=hit.chunk.clause_id, citation=hit.chunk.citation,
             snippet=(snippet or hit.chunk.text)[:400], chunk_id=hit.chunk.chunk_id,
-            retrieval_score=hit.score, notes=[f"extracted by {MODEL} from the retrieved clause"]))
+            retrieval_score=hit.score,
+            notes=[f"extracted by {configured_provider().title()} {configured_model()} from the retrieved clause"]))
 
     for name, scalar in (("deductible", extraction.deductible),
                          ("copayment_percentage", extraction.copayment_percentage),
@@ -135,15 +168,17 @@ def _as_facts(extraction: LLMPolicyExtraction, by_clause: dict[str, Retrieved]) 
     return facts
 
 
-def extract_with_llm(hits: list[Retrieved], *, model: str = MODEL) -> tuple[list[ExtractedFact], dict[str, Any]]:
-    """Extract policy facts from retrieved clauses with Claude. Returns (facts, diagnostics)."""
-    ok, reason = available()
+def extract_with_llm(hits: list[Retrieved], *, model: str | None = None) -> tuple[list[ExtractedFact], dict[str, Any]]:
+    """Extract policy facts from retrieved clauses with the configured provider."""
+    settings = get_settings()
+    provider = configured_provider(settings)
+    model = model or configured_model(settings)
+    ok, reason = available(settings)
     if not ok:
-        return [], {"status": "UNAVAILABLE", "reason": reason}
+        return [], {"status": "UNAVAILABLE", "reason": reason, "provider": provider, "model": model}
     if not hits:
-        return [], {"status": "SKIPPED", "reason": "no clauses retrieved"}
-
-    import anthropic
+        return [], {"status": "SKIPPED", "reason": "no clauses retrieved",
+                    "provider": provider, "model": model}
 
     by_clause: dict[str, Retrieved] = {}
     for hit in hits:
@@ -151,28 +186,107 @@ def extract_with_llm(hits: list[Retrieved], *, model: str = MODEL) -> tuple[list
         by_clause[hit.chunk.chunk_id] = hit
 
     try:
-        client = anthropic.Anthropic()
-        response = client.messages.parse(
-            model=model,
-            max_tokens=16000,
-            system=SYSTEM,
-            messages=[{"role": "user", "content":
-                       "Extract the policy terms stated in these clauses.\n\n" + _clause_block(hits)}],
-            output_format=LLMPolicyExtraction,
-        )
+        prompt = "Extract the policy terms stated in these clauses.\n\n" + _clause_block(hits)
+        if provider == "claude":
+            import anthropic
+
+            client = anthropic.Anthropic(
+                api_key=settings.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY"),
+                auth_token=settings.anthropic_auth_token or os.environ.get("ANTHROPIC_AUTH_TOKEN"),
+            )
+            response = client.messages.parse(
+                model=model,
+                max_tokens=16000,
+                system=SYSTEM,
+                messages=[{"role": "user", "content": prompt}],
+                output_format=LLMPolicyExtraction,
+            )
+            extraction = response.parsed_output
+            usage = getattr(response, "usage", None)
+            input_tokens = getattr(usage, "input_tokens", None)
+            output_tokens = getattr(usage, "output_tokens", None)
+        else:
+            from google import genai
+            from google.genai import types
+
+            client = genai.Client(api_key=settings.gemini_api_key or os.environ.get("GEMINI_API_KEY"))
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM,
+                    response_mime_type="application/json",
+                    response_schema=LLMPolicyExtraction,
+                    max_output_tokens=16000,
+                ),
+            )
+            extraction = (LLMPolicyExtraction.model_validate_json(response.text)
+                          if response.text else None)
+            usage = getattr(response, "usage_metadata", None)
+            input_tokens = getattr(usage, "prompt_token_count", None)
+            output_tokens = getattr(usage, "candidates_token_count", None)
     except Exception as exc:  # never fail policy extraction because the LLM path failed
         log.exception("LLM policy extraction failed")
-        return [], {"status": "ERROR", "reason": str(exc), "model": model}
+        return [], {"status": "ERROR", "reason": str(exc), "provider": provider, "model": model}
 
-    extraction = response.parsed_output
     if extraction is None:
-        return [], {"status": "ERROR", "reason": "model returned no parsable output", "model": model}
+        return [], {"status": "ERROR", "reason": "model returned no parsable output",
+                    "provider": provider, "model": model}
     facts = _as_facts(extraction, by_clause)
-    usage = getattr(response, "usage", None)
     return facts, {
-        "status": "AVAILABLE", "model": model, "facts_extracted": len(facts),
+        "status": "AVAILABLE", "provider": provider, "model": model, "facts_extracted": len(facts),
         "clauses_supplied": len(hits), "unclear_clauses": extraction.unclear_clauses,
-        "input_tokens": getattr(usage, "input_tokens", None),
-        "output_tokens": getattr(usage, "output_tokens", None),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
         "grounding": "facts citing a clause_id outside the retrieved set are dropped",
+    }
+
+
+def answer_with_gemini(question: str, hits: list[Retrieved]) -> dict[str, Any]:
+    """Answer from retrieved clauses only, rejecting model citations not supplied in the prompt."""
+    settings = get_settings()
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError as exc:
+        raise RuntimeError("google-genai package not installed (pip install google-genai)") from exc
+
+    api_key = settings.gemini_api_key or os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("no GEMINI_API_KEY in the environment")
+
+    allowed_ids = {hit.chunk.clause_id or hit.chunk.chunk_id for hit in hits}
+    prompt = (
+        "Answer the user's question using only the supplied policy clauses. If they do not contain "
+        "the answer, say that the policy wording does not state it. Do not use outside knowledge or "
+        "make assumptions. Cite every factual statement with the clause_id(s) that support it. "
+        "Return only clause IDs from the supplied clauses.\n\n"
+        f"Question: {question}\n\nSupplied clauses:\n{_clause_block(hits)}"
+    )
+    client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            system_instruction="You are a careful insurance-policy assistant. Ground every answer in the provided text.",
+            response_mime_type="application/json",
+            response_schema=LLMPolicyAnswer,
+            max_output_tokens=2048,
+        ),
+    )
+    if not response.text:
+        raise RuntimeError("Gemini returned no answer")
+    answer = LLMPolicyAnswer.model_validate_json(response.text)
+    cited_ids = list(dict.fromkeys(answer.clause_ids))
+    unsupported_ids = [clause_id for clause_id in cited_ids if clause_id not in allowed_ids]
+    if unsupported_ids:
+        log.warning("Gemini answer cited clauses not supplied in retrieval: %s", unsupported_ids)
+        raise RuntimeError("Gemini returned a citation that was not in the retrieved clauses")
+    if not cited_ids:
+        raise RuntimeError("Gemini answer did not cite any retrieved clauses")
+    return {
+        "answer": answer.answer,
+        "cited_clauses": cited_ids,
+        "provider": "gemini",
+        "model": GEMINI_MODEL,
     }

@@ -7,8 +7,9 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from app.core.utils import jsonable
-from app.rag.llm_extractor import MODEL as LLM_MODEL
+from app.rag.llm_extractor import answer_with_gemini
 from app.rag.llm_extractor import available as llm_available
+from app.rag.llm_extractor import configured_model, configured_provider
 from app.rag.service import DEFAULT_MIN_CONFIDENCE, PolicyDocumentIndex, answer_question, extract_policy
 
 router = APIRouter(prefix="/api/v1/policy", tags=["policy-rag"])
@@ -22,7 +23,7 @@ class PolicyExtractRequest(BaseModel):
     policy_type: str | None = None
     valid_from: date | None = None
     valid_until: date | None = None
-    use_llm: bool = Field(default=False, description="Also run Claude grounded extraction over retrieved clauses")
+    use_llm: bool = Field(default=False, description="Also run grounded LLM extraction over retrieved clauses")
     min_confidence: float = Field(default=DEFAULT_MIN_CONFIDENCE, ge=0.0, le=1.0)
     top_k: int = Field(default=6, ge=1, le=25)
 
@@ -31,6 +32,7 @@ class PolicyQuestionRequest(BaseModel):
     document_text: str = Field(min_length=1)
     question: str = Field(min_length=2)
     top_k: int = Field(default=4, ge=1, le=15)
+    use_llm: bool = Field(default=True, description="Generate a grounded answer with Gemini")
 
 
 def _index(text: str, policy_number: str | None = None) -> PolicyDocumentIndex:
@@ -76,7 +78,14 @@ async def extract_upload(file: UploadFile = File(...), policy_number: str | None
 @router.post("/ask", summary="Retrieve the policy clauses that answer a question, with citations")
 def ask(body: PolicyQuestionRequest):
     index = _index(body.document_text)
-    return jsonable({"success": True, **answer_question(index, body.question, top_k=body.top_k)})
+    result = answer_question(index, body.question, top_k=body.top_k)
+    if body.use_llm and result["answered"]:
+        hits = index.search(body.question, top_k=body.top_k)
+        try:
+            result.update(answer_with_gemini(body.question, hits))
+        except Exception as exc:
+            raise HTTPException(503, {"error": "GEMINI_ANSWER_FAILED", "message": str(exc)}) from exc
+    return jsonable({"success": True, **result})
 
 
 @router.get("/rag/status", summary="RAG component availability")
@@ -88,6 +97,7 @@ def rag_status():
         "rule_based_extraction": {"status": "AVAILABLE",
                                   "fields": ["deductible", "copayment_percentage", "sum_insured", "sublimits",
                                              "exclusions", "coverage", "waiting_periods"]},
-        "llm_extraction": {"status": "AVAILABLE" if ok else "UNAVAILABLE", "reason": reason, "model": LLM_MODEL,
-                           "note": "Optional. Retrieval and rule-based extraction run without it."},
+        "llm_extraction": {"status": "AVAILABLE" if ok else "UNAVAILABLE", "reason": reason,
+                           "provider": configured_provider(), "model": configured_model(),
+                           "note": "Optional for extraction; the Ask action requires Gemini."},
     }

@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     app_name: str = "ClaimsGuard AI"
     environment: str = "development"
     log_level: str = "INFO"
+    llm_provider: str = "gemini"
+    anthropic_api_key: str = Field(default="", validation_alias="ANTHROPIC_API_KEY")
+    anthropic_auth_token: str = Field(default="", validation_alias="ANTHROPIC_AUTH_TOKEN")
+    gemini_api_key: str = Field(default="", validation_alias="GEMINI_API_KEY")
 
     database_url: str = "postgresql+psycopg://claimsguard:claimsguard@localhost:5432/claimsguard"
     auto_create_tables: bool = True

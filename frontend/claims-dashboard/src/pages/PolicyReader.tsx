@@ -69,7 +69,6 @@ export function PolicyReader() {
   const [text, setText] = useState('')
   const [sourceName, setSourceName] = useState('')
   const [policyNumber, setPolicyNumber] = useState('')
-  const [useLlm, setUseLlm] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<PolicyExtraction | null>(null)
@@ -106,7 +105,7 @@ export function PolicyReader() {
       const res = await extractPolicyFromDocument(agentUrl, text, {
         policyNumber: policyNumber || undefined,
         policyType: 'HEALTH',
-        useLlm,
+        useLlm: true,
       })
       setResult(res)
       log({
@@ -196,14 +195,10 @@ export function PolicyReader() {
                 placeholder="Policy number (optional)"
                 className="rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
               />
-              <label className="flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-sm text-ink">
-                <input type="checkbox" checked={useLlm} onChange={(e) => setUseLlm(e.target.checked)} />
-                <span>Also use Claude</span>
-              </label>
             </div>
             <p className="mt-1 text-xs text-mute">
-              Retrieval and rule-based extraction always run locally. The Claude pass is optional and needs an
-              API key on the engine; it only ever sees the retrieved clauses and must cite them.
+              Gemini runs over retrieved clauses and must cite the policy wording. The rule-based extraction also
+              runs, and the engine key stays on the backend.
             </p>
 
             <button
@@ -247,9 +242,17 @@ export function PolicyReader() {
                       <p className="mt-1 whitespace-pre-wrap text-xs text-ink">{c.text}</p>
                     </div>
                   ))}
+                  {answer.answer ? (
+                    <div className="rounded-xl border border-brand/40 bg-brand/10 p-3">
+                      <p className="text-xs font-semibold text-brand-dark">Gemini answer</p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-ink">{answer.answer}</p>
+                      {answer.cited_clauses?.length ? (
+                        <p className="mt-1 text-xs text-mute">Cited clauses: {answer.cited_clauses.join(', ')}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <p className="text-xs text-mute">
-                    Clauses are quoted verbatim from the document, not paraphrased — so the wording is safe to
-                    quote back to a claimant.
+                    Gemini answers from the retrieved clauses; the original wording is quoted above for verification.
                   </p>
                 </div>
               ) : (
@@ -285,7 +288,7 @@ export function PolicyReader() {
                   <span>{result.document.chunks} chunks</span>
                   <span>{result.document.clauses_detected} clauses</span>
                   <span>{result.facts.length} cited facts</span>
-                  <span>Claude pass: {result.llm_extraction.status.toLowerCase().replace(/_/g, ' ')}</span>
+                  <span>Gemini pass: {result.llm_extraction.status.toLowerCase().replace(/_/g, ' ')}</span>
                 </div>
 
                 {policy?.deductible != null ? (
