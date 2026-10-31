@@ -71,7 +71,7 @@ payable`...). It runs offline: no API key, no model download, no vector database
 - **Grounded LLM pass** (`use_llm: true`) runs over the _retrieved clauses only_ and must cite a
   supplied `clause_id`; a fact citing anything else is dropped. The dashboard runs this
   automatically with Gemini. Set `CG_LLM_PROVIDER=gemini` and `GEMINI_API_KEY` in the local
-  git-ignored `.env` file; Gemini uses `gemini-2.0-flash`. Claude remains available for backend
+  git-ignored `.env` file; Gemini uses `gemini-3.6-flash`. Claude remains available for backend
   extraction by setting `CG_LLM_PROVIDER=claude` and `ANTHROPIC_API_KEY`. The Ask action always
   uses Gemini when configured and returns the original supporting clauses alongside the generated
   answer. If Gemini is unavailable, Ask degrades to retrieved clause citations rather than failing.
