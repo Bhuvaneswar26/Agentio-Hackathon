@@ -20,7 +20,7 @@ from app.rag.retriever import Retrieved
 log = logging.getLogger(__name__)
 
 CLAUDE_MODEL = "claude-opus-5-5"
-GEMINI_MODEL = "gemini-3.6-flash"
+GEMINI_MODEL = "gemini-2.0-flash"
 
 SYSTEM = """You extract insurance policy terms from policy wording, for a claims-leakage engine.
 
