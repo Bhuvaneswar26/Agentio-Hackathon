@@ -1,6 +1,5 @@
 import {
   Activity,
-  Bell,
   BookOpen,
   FileSearch,
   LayoutDashboard,
