@@ -94,6 +94,15 @@ export type AuditEvent = {
   claimId?: string;
 };
 
+export type ClaimNote = {
+  id: string;
+  at: string;
+  by: string;
+  text: string;
+  /** Queue the claim was moved to when this note was saved, if it changed. */
+  queue?: ClaimQueue;
+};
+
 export type Claim = {
   id: string;
   policyNumber: string;
@@ -119,6 +128,8 @@ export type Claim = {
   sourceFormat: SourceFormat;
   extractionConfidence: number;
   notes: string;
+  /** Saved reviewer notes, newest first. `notes` mirrors the latest one. */
+  noteHistory?: ClaimNote[];
   supervisorNote?: string;
   specialReason?: string;
   /** ClaimsGuard engine analysis id, when scored by the backend. */

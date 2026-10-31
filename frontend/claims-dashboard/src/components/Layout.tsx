@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAppStore } from "../store/useAppStore";
+import { Toaster } from "./ui";
 import type { Role } from "../types";
 
 const nav = [
@@ -129,6 +130,7 @@ export function Layout() {
         <main className="min-h-[calc(100vh-180px)] px-4 py-8 md:px-8">
           <Outlet />
         </main>
+        <Toaster />
       </div>
     </div>
   );

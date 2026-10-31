@@ -1,5 +1,15 @@
 import { useState } from "react";
-import { Check, FileQuestion, Pencil, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  CheckCircle2,
+  FileQuestion,
+  Pencil,
+  Save,
+  Sparkles,
+  X,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   EmptyState,
@@ -8,24 +18,59 @@ import {
   QueueBadge,
   SeverityBadge,
 } from "../components/ui";
-import { findingLabel, formatDate, inr } from "../lib/format";
+import { findingLabel, formatDate, inr, queueLabel } from "../lib/format";
 import { useAppStore } from "../store/useAppStore";
-import type { ClaimQueue } from "../types";
+import { useToast } from "../store/useToast";
+import type { Claim, ClaimNote, ClaimQueue } from "../types";
 import type { FindingReviewAction } from "../lib/api";
+
+const decisions: Array<{
+  queue: ClaimQueue;
+  label: string;
+  hint: string;
+  icon: LucideIcon;
+}> = [
+  {
+    queue: "good",
+    label: "Good claim",
+    hint: "Clear to settle",
+    icon: CheckCircle2,
+  },
+  {
+    queue: "unassessed",
+    label: "Request documents",
+    hint: "Evidence is incomplete",
+    icon: FileQuestion,
+  },
+  {
+    queue: "special",
+    label: "Special review",
+    hint: "Needs supervisor judgement",
+    icon: Sparkles,
+  },
+];
+
+const roleLabel = {
+  handler: "Claims handler",
+  supervisor: "Supervisor",
+  executive: "Executive",
+} as const;
+
+function formatStamp(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export function ClaimDetail() {
   const { id } = useParams();
-  const navigate = useNavigate();
-  const { claims, moveQueue, addNote, reviewFinding, role } = useAppStore();
+  const claims = useAppStore((s) => s.claims);
   const claim = claims.find((c) => c.id === id);
-  const [note, setNote] = useState(claim?.notes ?? "");
-  const [reason, setReason] = useState(
-    claim?.specialReason ?? "Needs supervisor judgement",
-  );
-  const [correctedAmounts, setCorrectedAmounts] = useState<
-    Record<string, string>
-  >({});
-  const [reviewMessage, setReviewMessage] = useState("");
 
   if (!claim) {
     return (
@@ -35,29 +80,228 @@ export function ClaimDetail() {
       />
     );
   }
+  // Keyed so local drafts reset when moving between claims.
+  return <ClaimView key={claim.id} claim={claim} claims={claims} />;
+}
 
-  const current = claim;
-  const related = claims.filter((c) => current.relatedClaimIds.includes(c.id));
+function DecisionPanel({ claim }: { claim: Claim }) {
+  const { saveReview, moveQueue, role } = useAppStore();
+  const push = useToast((s) => s.push);
+  const [pick, setPick] = useState<ClaimQueue | null>(null);
+  const [note, setNote] = useState("");
+  const [savedAt, setSavedAt] = useState<string | null>(null);
 
-  function act(queue: ClaimQueue) {
-    moveQueue(current.id, queue, queue === "special" ? reason : note);
+  const readOnly = role === "executive";
+  const choice = pick ?? claim.queue;
+  const changed = choice !== claim.queue;
+  const dirty = changed || note.trim().length > 0;
+
+  const history: ClaimNote[] =
+    claim.noteHistory ??
+    (claim.notes
+      ? [{ id: "legacy", at: "", by: "system", text: claim.notes }]
+      : []);
+
+  function save() {
+    if (!dirty) return;
+    const previous = claim.queue;
+    saveReview(claim.id, { queue: choice, note });
+    setNote("");
+    setPick(null);
+    setSavedAt(new Date().toISOString());
+    push({
+      tone: "success",
+      message: changed
+        ? `${claim.id} saved as “${queueLabel[choice]}”.`
+        : `Note saved on ${claim.id}.`,
+      action: changed
+        ? {
+            label: "Undo",
+            onClick: () => {
+              moveQueue(claim.id, previous, `Undo: restored ${previous}`);
+              push({
+                tone: "info",
+                message: `${claim.id} restored to “${queueLabel[previous]}”.`,
+              });
+            },
+          }
+        : undefined,
+    });
   }
+
+  return (
+    <Panel
+      title="Your decision"
+      action={
+        <span
+          className={`inline-flex items-center gap-1.5 text-xs ${dirty ? "text-amber-700" : "text-mute"}`}
+        >
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${dirty ? "bg-amber-500" : "bg-brand"}`}
+          />
+          {dirty
+            ? "Unsaved changes"
+            : savedAt
+              ? `Saved at ${formatStamp(savedAt)}`
+              : "No pending changes"}
+        </span>
+      }
+    >
+      <div className="grid gap-5 lg:grid-cols-[3fr_2fr]">
+        <div>
+          <div
+            className="grid gap-2 sm:grid-cols-3"
+            role="radiogroup"
+            aria-label="Claim decision"
+          >
+            {decisions.map((d) => {
+              const Icon = d.icon;
+              const selected = choice === d.queue;
+              return (
+                <button
+                  key={d.queue}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  disabled={readOnly}
+                  onClick={() => setPick(d.queue)}
+                  className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                    selected
+                      ? "border-brand bg-brand/10 ring-2 ring-brand/30"
+                      : "border-line bg-white hover:border-brand"
+                  }`}
+                >
+                  <span className="flex items-center gap-2 text-sm font-medium">
+                    <Icon
+                      size={16}
+                      className={selected ? "text-brand-dark" : "text-mute"}
+                    />
+                    {d.label}
+                  </span>
+                  <span className="text-[11px] text-mute">
+                    {selected && !changed ? "Current status" : d.hint}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {readOnly ? (
+            <p className="mt-2 text-xs text-mute">
+              Executive view is read-only on queue moves. You can still add a
+              note.
+            </p>
+          ) : null}
+
+          <label
+            htmlFor="claim-note"
+            className="mt-4 block text-xs font-medium text-mute"
+          >
+            {choice === "special"
+              ? "Why does this need special review?"
+              : "Note (optional)"}
+          </label>
+          <textarea
+            id="claim-note"
+            className="mt-1 w-full rounded-xl border border-line bg-mist p-3 text-sm outline-none focus:border-brand focus:bg-white"
+            rows={3}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") save();
+            }}
+            placeholder={`Add a ${roleLabel[role].toLowerCase()} note…`}
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={save}
+              disabled={!dirty}
+              className="inline-flex items-center gap-2 rounded-full bg-ink px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Save size={15} />
+              {changed ? `Save as ${queueLabel[choice]}` : "Save note"}
+            </button>
+            {dirty ? (
+              <button
+                type="button"
+                className="text-sm text-mute hover:text-ink"
+                onClick={() => {
+                  setPick(null);
+                  setNote("");
+                }}
+              >
+                Discard
+              </button>
+            ) : null}
+            <span className="ml-auto hidden text-[11px] text-mute sm:block">
+              Ctrl + Enter to save
+            </span>
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-medium text-mute">
+            Saved notes{history.length ? ` · ${history.length}` : ""}
+          </p>
+          {history.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-line px-3 py-6 text-center text-xs text-mute">
+              No notes yet. Saved notes will appear here.
+            </p>
+          ) : (
+            <ul className="max-h-56 space-y-2 overflow-y-auto pr-1">
+              {history.map((n) => (
+                <li key={n.id} className="rounded-xl bg-mist px-3 py-2 text-sm">
+                  <p className="whitespace-pre-wrap">{n.text}</p>
+                  <p className="mt-1 text-[11px] text-mute">
+                    {n.by in roleLabel
+                      ? roleLabel[n.by as keyof typeof roleLabel]
+                      : n.by}
+                    {n.at ? ` · ${formatStamp(n.at)}` : ""}
+                    {n.queue ? ` · → ${queueLabel[n.queue]}` : ""}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function ClaimView({ claim, claims }: { claim: Claim; claims: Claim[] }) {
+  const navigate = useNavigate();
+  const reviewFinding = useAppStore((s) => s.reviewFinding);
+  const push = useToast((s) => s.push);
+  const [correctedAmounts, setCorrectedAmounts] = useState<
+    Record<string, string>
+  >({});
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const related = claims.filter((c) => claim.relatedClaimIds.includes(c.id));
 
   async function review(findingId: string, action: FindingReviewAction) {
     const raw = correctedAmounts[findingId];
     const amount = action === "CORRECT" ? Number(raw) : undefined;
+    setBusyId(findingId);
     try {
-      await reviewFinding(current.id, findingId, action, note, amount);
-      setReviewMessage(
-        "Finding review saved" +
-          (current.analysisId ? " and totals recalculated." : " locally."),
-      );
+      await reviewFinding(claim.id, findingId, action, undefined, amount);
+      push({
+        tone: "success",
+        message:
+          "Finding review saved" +
+          (claim.analysisId ? " and totals recalculated." : "."),
+      });
     } catch (error) {
-      setReviewMessage(
-        error instanceof Error
-          ? error.message
-          : "Could not save this finding review.",
-      );
+      push({
+        tone: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Could not save this finding review.",
+      });
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -70,10 +314,10 @@ export function ClaimDetail() {
         actions={
           <button
             type="button"
-            className="text-sm text-mute"
+            className="inline-flex items-center gap-1.5 text-sm text-mute hover:text-ink"
             onClick={() => navigate(-1)}
           >
-            Back
+            <ArrowLeft size={16} /> Back
           </button>
         }
       />
@@ -87,11 +331,19 @@ export function ClaimDetail() {
           Source {claim.sourceFormat} ·{" "}
           {Math.round(claim.extractionConfidence * 100)}%
         </span>
+        <span className="text-xs text-mute">
+          Filed {formatDate(claim.filedDate)} · incident{" "}
+          {formatDate(claim.incidentDate)}
+        </span>
         {claim.missingFields.length ? (
           <span className="rounded-full bg-ink px-3 py-1 text-xs text-brand">
             Missing: {claim.missingFields.join(", ")}
           </span>
         ) : null}
+      </div>
+
+      <div className="mb-5">
+        <DecisionPanel claim={claim} />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -125,7 +377,7 @@ export function ClaimDetail() {
         </div>
       </div>
 
-      <div className="mt-5 grid gap-4 xl:grid-cols-3">
+      <div className="mt-5 grid gap-4 xl:grid-cols-2">
         <Panel
           title="Line items"
           action={
@@ -165,183 +417,132 @@ export function ClaimDetail() {
             ))}
           </ul>
         </Panel>
-        <Panel title="Actions">
-          <p className="mb-3 text-xs text-mute">
-            Claim-level queue actions are separate from finding decisions. Use
-            the controls on each finding below to sync a review decision to the
-            engine.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="rounded-full bg-brand px-3 py-1.5 text-xs"
-              onClick={() => act("good")}
-            >
-              Mark good
-            </button>
-            <button
-              type="button"
-              className="rounded-full border border-line px-3 py-1.5 text-xs"
-              onClick={() => act("unassessed")}
-            >
-              Request documents
-            </button>
-            <button
-              type="button"
-              className="rounded-full bg-brand px-3 py-1.5 text-xs"
-              onClick={() => act("special")}
-            >
-              Move to special review
-            </button>
-          </div>
-          <textarea
-            className="mt-3 w-full rounded-xl border border-line bg-mist p-2 text-sm"
-            rows={3}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="Why is this a special case?"
-          />
-          <textarea
-            className="mt-2 w-full rounded-xl border border-line bg-mist p-2 text-sm"
-            rows={3}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder={`${role} note`}
-          />
-          <button
-            type="button"
-            className="mt-2 rounded-full bg-ink px-3 py-1.5 text-xs text-white"
-            onClick={() => addNote(claim.id, note)}
-          >
-            Save note
-          </button>
-          <p className="mt-3 text-xs text-mute">
-            Filed {formatDate(claim.filedDate)} · incident{" "}
-            {formatDate(claim.incidentDate)}
-          </p>
-        </Panel>
       </div>
 
       <div className="mt-4 space-y-3">
         <h2 className="text-sm font-semibold">Explainable findings</h2>
-        {reviewMessage ? (
-          <p
-            className="rounded-xl border border-line bg-white px-3 py-2 text-sm"
-            role="status"
-          >
-            {reviewMessage}
-          </p>
-        ) : null}
         {claim.findings.length === 0 ? (
           <p className="rounded-2xl border border-line bg-white p-4 text-sm text-mute">
             No leakage findings. This is a good claim unless new evidence
             arrives.
           </p>
         ) : (
-          claim.findings.map((f) => (
-            <article
-              key={f.id}
-              className="rounded-2xl border border-line bg-white p-4"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="font-medium">{f.title}</h3>
-                <SeverityBadge severity={f.severity} />
-                <span className="text-xs text-mute">
-                  {findingLabel[f.kind]} · {f.engine} · {f.certainty}
-                </span>
-                {f.leakageAmount ? (
-                  <span className="ml-auto font-mono text-sm">
-                    {inr(f.leakageAmount)}
+          claim.findings.map((f) => {
+            const busy = busyId === f.id;
+            return (
+              <article
+                key={f.id}
+                className="rounded-2xl border border-line bg-white p-4"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-medium">{f.title}</h3>
+                  <SeverityBadge severity={f.severity} />
+                  <span className="text-xs text-mute">
+                    {findingLabel[f.kind]} · {f.engine} · {f.certainty}
                   </span>
-                ) : null}
-              </div>
-              <p className="mt-2 text-sm text-mute">{f.explanation}</p>
-              <ul className="mt-2 flex flex-wrap gap-2">
-                {f.evidence.map((e) => (
-                  <li
-                    key={e}
-                    className="rounded-full bg-mist px-2 py-1 text-[11px]"
+                  {f.leakageAmount ? (
+                    <span className="ml-auto font-mono text-sm">
+                      {inr(f.leakageAmount)}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-2 text-sm text-mute">{f.explanation}</p>
+                <ul className="mt-2 flex flex-wrap gap-2">
+                  {f.evidence.map((e) => (
+                    <li
+                      key={e}
+                      className="rounded-full bg-mist px-2 py-1 text-[11px]"
+                    >
+                      {e}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+                  <span className="mr-auto text-xs text-mute">
+                    Review: {f.reviewStatus ?? "PENDING"}
+                  </span>
+                  <button
+                    type="button"
+                    title="Confirm finding"
+                    aria-label="Confirm finding"
+                    disabled={busy}
+                    onClick={() => void review(f.id, "CONFIRM")}
+                    className="inline-flex items-center gap-1 rounded-lg bg-brand px-2.5 py-1.5 text-xs disabled:opacity-50"
                   >
-                    {e}
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-                <span className="mr-auto text-xs text-mute">
-                  Review: {f.reviewStatus ?? "PENDING"}
-                </span>
-                <button
-                  type="button"
-                  title="Confirm finding"
-                  aria-label="Confirm finding"
-                  onClick={() => void review(f.id, "CONFIRM")}
-                  className="inline-flex items-center gap-1 rounded-lg bg-brand px-2.5 py-1.5 text-xs"
-                >
-                  <Check size={14} /> Confirm
-                </button>
-                <button
-                  type="button"
-                  title="Dismiss finding"
-                  aria-label="Dismiss finding"
-                  onClick={() => void review(f.id, "DISMISS")}
-                  className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs"
-                >
-                  <X size={14} /> Dismiss
-                </button>
-                <button
-                  type="button"
-                  title="Request evidence"
-                  aria-label="Request evidence"
-                  onClick={() => void review(f.id, "REQUEST_EVIDENCE")}
-                  className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs"
-                >
-                  <FileQuestion size={14} /> Request evidence
-                </button>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={correctedAmounts[f.id] ?? String(f.leakageAmount)}
-                  onChange={(event) =>
-                    setCorrectedAmounts((values) => ({
-                      ...values,
-                      [f.id]: event.target.value,
-                    }))
-                  }
-                  aria-label={`Corrected amount for ${f.title}`}
-                  className="w-28 rounded-lg border border-line px-2 py-1.5 text-xs"
-                />
-                <button
-                  type="button"
-                  title="Save corrected amount"
-                  aria-label="Save corrected amount"
-                  onClick={() => void review(f.id, "CORRECT")}
-                  className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs"
-                >
-                  <Pencil size={14} /> Correct
-                </button>
-              </div>
-            </article>
-          ))
+                    <Check size={14} /> Confirm
+                  </button>
+                  <button
+                    type="button"
+                    title="Dismiss finding"
+                    aria-label="Dismiss finding"
+                    disabled={busy}
+                    onClick={() => void review(f.id, "DISMISS")}
+                    className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs disabled:opacity-50"
+                  >
+                    <X size={14} /> Dismiss
+                  </button>
+                  <button
+                    type="button"
+                    title="Request evidence"
+                    aria-label="Request evidence"
+                    disabled={busy}
+                    onClick={() => void review(f.id, "REQUEST_EVIDENCE")}
+                    className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs disabled:opacity-50"
+                  >
+                    <FileQuestion size={14} /> Request evidence
+                  </button>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={correctedAmounts[f.id] ?? String(f.leakageAmount)}
+                    onChange={(event) =>
+                      setCorrectedAmounts((values) => ({
+                        ...values,
+                        [f.id]: event.target.value,
+                      }))
+                    }
+                    aria-label={`Corrected amount for ${f.title}`}
+                    className="w-28 rounded-lg border border-line px-2 py-1.5 text-xs"
+                  />
+                  <button
+                    type="button"
+                    title="Save corrected amount"
+                    aria-label="Save corrected amount"
+                    disabled={busy}
+                    onClick={() => void review(f.id, "CORRECT")}
+                    className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs disabled:opacity-50"
+                  >
+                    <Pencil size={14} /> Correct
+                  </button>
+                </div>
+              </article>
+            );
+          })
         )}
       </div>
 
       {related.length ? (
-        <Panel title="Related claims">
-          <ul className="text-sm">
-            {related.map((r) => (
-              <li
-                key={r.id}
-                className="flex justify-between border-t border-line py-2 first:border-0"
-              >
-                <Link className="hover:text-brand-dark" to={`/claims/${r.id}`}>
-                  {r.id} · {r.claimant}
-                </Link>
-                <QueueBadge queue={r.queue} />
-              </li>
-            ))}
-          </ul>
-        </Panel>
+        <div className="mt-4">
+          <Panel title="Related claims">
+            <ul className="text-sm">
+              {related.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex justify-between border-t border-line py-2 first:border-0"
+                >
+                  <Link
+                    className="hover:text-brand-dark"
+                    to={`/claims/${r.id}`}
+                  >
+                    {r.id} · {r.claimant}
+                  </Link>
+                  <QueueBadge queue={r.queue} />
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        </div>
       ) : null}
     </div>
   );

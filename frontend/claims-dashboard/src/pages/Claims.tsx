@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { TrendingUp, AlertCircle, CheckCircle2, Clock } from 'lucide-react'
 import { EmptyState, PageHeader, QueueBadge } from '../components/ui'
 import { inr } from '../lib/format'
+import { useQueueMove } from '../lib/useQueueMove'
 import { useAppStore } from '../store/useAppStore'
 import type { ClaimQueue } from '../types'
 
@@ -16,9 +17,10 @@ const tabs: Array<{ id: string; label: string; queues?: ClaimQueue[] }> = [
 ]
 
 export function Claims() {
-  const { claims, filters, setFilters, moveQueue } = useAppStore()
+  const { claims, filters, setFilters, role } = useAppStore()
+  const move = useQueueMove()
   const [tab, setTab] = useState('all')
-  const [reason, setReason] = useState('Supervisor review requested from workspace')
+  const locked = role === 'executive'
 
   const stats = useMemo(() => ({
     total: claims.length,
@@ -44,7 +46,7 @@ export function Claims() {
       <PageHeader
         eyebrow="Workspace"
         title="Claims desk"
-        description="Good claims and flagged claims can both be escalated to special review. Incomplete evidence stays unassessed so it cannot be mistaken for fraud."
+        description="Open a claim to review it, or use the quick actions to mark it good or escalate it. Every change is saved and can be undone."
       />
 
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -128,12 +130,6 @@ export function Claims() {
           <option>Motor</option>
           <option>General</option>
         </select>
-        <input
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          className="flex-1 rounded-lg border border-line bg-mist px-4 py-2.5 text-sm outline-none transition-colors focus:border-brand focus:bg-white"
-          placeholder="Special review reason"
-        />
       </div>
 
       {filtered.length === 0 ? (
@@ -183,17 +179,32 @@ export function Claims() {
                     <QueueBadge queue={c.queue} />
                   </td>
                   <td className="px-6 py-4">
-                    {c.queue === 'special' ? (
-                      <span className="text-xs text-mute italic">Escalated</span>
-                    ) : (
-                      <button
-                        type="button"
-                        className="rounded-lg bg-brand text-ink px-4 py-2 text-xs font-medium hover:bg-brand-dark transition-colors shadow-sm"
-                        onClick={() => moveQueue(c.id, 'special', reason)}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link
+                        to={`/claims/${c.id}`}
+                        className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium hover:border-brand"
                       >
-                        Review
-                      </button>
-                    )}
+                        Open
+                      </Link>
+                      {!locked && c.queue !== 'good' ? (
+                        <button
+                          type="button"
+                          className="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-ink shadow-sm hover:bg-brand-dark"
+                          onClick={() => move(c.id, 'good')}
+                        >
+                          Mark good
+                        </button>
+                      ) : null}
+                      {!locked && c.queue !== 'special' ? (
+                        <button
+                          type="button"
+                          className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium hover:border-brand"
+                          onClick={() => move(c.id, 'special', 'Escalated from claims workspace')}
+                        >
+                          Escalate
+                        </button>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}

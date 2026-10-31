@@ -13,6 +13,7 @@ import type { ExtractedPolicy } from "../lib/policyRag";
 import type {
   AuditEvent,
   Claim,
+  ClaimNote,
   ClaimQueue,
   DetectionPayload,
   IngestJob,
@@ -48,7 +49,17 @@ type AppState = {
   updateJob: (id: string, patch: Partial<IngestJob>) => void;
   ingestPayloadAsClaim: (payload: DetectionPayload) => string;
   addAgentClaim: (claim: Claim) => string;
-  moveQueue: (claimId: string, queue: ClaimQueue, reason?: string) => void;
+  /** Returns the queue the claim was in before the move (for undo). */
+  moveQueue: (
+    claimId: string,
+    queue: ClaimQueue,
+    reason?: string,
+  ) => ClaimQueue | undefined;
+  /** Saves a queue decision and an optional note in one step. */
+  saveReview: (
+    claimId: string,
+    review: { queue: ClaimQueue; note?: string },
+  ) => void;
   reviewFinding: (
     claimId: string,
     findingId: string,
@@ -151,6 +162,7 @@ export const useAppStore = create<AppState>()(
         return claim.id;
       },
       moveQueue: (claimId, queue, reason) => {
+        const previous = get().claims.find((c) => c.id === claimId)?.queue;
         set({
           claims: get().claims.map((c) =>
             c.id === claimId
@@ -169,6 +181,52 @@ export const useAppStore = create<AppState>()(
           actor: get().role === "supervisor" ? "Supervisor" : "Claims handler",
           action: `Moved to ${queue}`,
           detail: reason || `Queue changed to ${queue}`,
+          claimId,
+        });
+        return previous;
+      },
+      saveReview: (claimId, { queue, note }) => {
+        const text = note?.trim();
+        const claim = get().claims.find((c) => c.id === claimId);
+        if (!claim) return;
+        const moved = queue !== claim.queue;
+        const entry: ClaimNote | null = text
+          ? {
+              id: uid("NOTE"),
+              at: new Date().toISOString(),
+              by: get().role,
+              text,
+              ...(moved ? { queue } : {}),
+            }
+          : null;
+        set({
+          claims: get().claims.map((c) =>
+            c.id === claimId
+              ? {
+                  ...c,
+                  queue,
+                  specialReason:
+                    queue === "special"
+                      ? (text ?? c.specialReason ?? "Needs supervisor judgement")
+                      : c.specialReason,
+                  ...(entry
+                    ? {
+                        notes: entry.text,
+                        noteHistory: [entry, ...(c.noteHistory ?? [])],
+                        supervisorNote:
+                          get().role === "supervisor"
+                            ? entry.text
+                            : c.supervisorNote,
+                      }
+                    : {}),
+                }
+              : c,
+          ),
+        });
+        get().log({
+          actor: get().role,
+          action: moved ? `Decision saved: ${queue}` : "Note saved",
+          detail: text || `Queue changed to ${queue}`,
           claimId,
         });
       },
@@ -273,24 +331,8 @@ export const useAppStore = create<AppState>()(
         }
       },
       addNote: (claimId, note) => {
-        set({
-          claims: get().claims.map((c) =>
-            c.id === claimId
-              ? {
-                  ...c,
-                  notes: note,
-                  supervisorNote:
-                    get().role === "supervisor" ? note : c.supervisorNote,
-                }
-              : c,
-          ),
-        });
-        get().log({
-          actor: get().role,
-          action: "Added review note",
-          detail: note,
-          claimId,
-        });
+        const claim = get().claims.find((c) => c.id === claimId);
+        if (claim) get().saveReview(claimId, { queue: claim.queue, note });
       },
       log: (event) =>
         set({

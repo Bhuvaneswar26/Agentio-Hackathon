@@ -1,6 +1,63 @@
 import type { ReactNode } from "react";
+import { CheckCircle2, Info, TriangleAlert, X } from "lucide-react";
 import { queueLabel, severityTone } from "../lib/format";
+import { useToast } from "../store/useToast";
 import type { ClaimQueue, Severity } from "../types";
+
+export function Toaster() {
+  const { toasts, dismiss } = useToast();
+  return (
+    <div
+      className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2"
+      aria-live="polite"
+    >
+      {toasts.map((t) => {
+        const Icon =
+          t.tone === "success"
+            ? CheckCircle2
+            : t.tone === "error"
+              ? TriangleAlert
+              : Info;
+        const tone =
+          t.tone === "success"
+            ? "text-brand-dark"
+            : t.tone === "error"
+              ? "text-red-600"
+              : "text-mute";
+        return (
+          <div
+            key={t.id}
+            role={t.tone === "error" ? "alert" : "status"}
+            className="animate-slide-up pointer-events-auto flex items-start gap-3 rounded-xl border border-line bg-white px-4 py-3 text-sm shadow-lg"
+          >
+            <Icon size={18} className={`mt-0.5 shrink-0 ${tone}`} />
+            <p className="flex-1">{t.message}</p>
+            {t.action ? (
+              <button
+                type="button"
+                className="shrink-0 font-semibold text-brand-dark hover:underline"
+                onClick={() => {
+                  t.action?.onClick();
+                  dismiss(t.id);
+                }}
+              >
+                {t.action.label}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              aria-label="Dismiss"
+              className="shrink-0 text-mute hover:text-ink"
+              onClick={() => dismiss(t.id)}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export function KpiCard({
   label,

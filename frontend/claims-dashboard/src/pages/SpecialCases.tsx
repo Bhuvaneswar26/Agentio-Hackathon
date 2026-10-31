@@ -1,10 +1,12 @@
 import { PageHeader, Panel, QueueBadge, EmptyState } from '../components/ui'
 import { inr } from '../lib/format'
+import { useQueueMove } from '../lib/useQueueMove'
 import { useAppStore } from '../store/useAppStore'
 import { Link } from 'react-router-dom'
 
 export function SpecialCases() {
-  const { claims, moveQueue, role } = useAppStore()
+  const { claims, role } = useAppStore()
+  const moveQueue = useQueueMove()
   const special = claims.filter((c) => c.queue === 'special')
   const locked = role === 'executive'
 
