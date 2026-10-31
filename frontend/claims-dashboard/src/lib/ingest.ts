@@ -107,6 +107,15 @@ function str(v: unknown): string | undefined {
   return s ? s : undefined;
 }
 
+function normalizeDate(v: string | undefined): string | undefined {
+  if (!v) return v;
+  const m = v.trim().match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/);
+  if (!m) return v;
+  const [, d, mo, y] = m;
+  const year = y.length === 2 ? `20${y}` : y;
+  return `${year}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+}
+
 function pick(row: Record<string, unknown>, keys: string[]) {
   const entries = Object.entries(row);
   for (const key of keys) {
@@ -175,7 +184,7 @@ function linesFromRows(rows: Record<string, unknown>[]): InvoiceLine[] {
         str(pick(row, ["provider", "hospital", "garage", "vendor"])) ?? "",
       invoiceRef:
         str(pick(row, ["invoice", "invoiceref", "invoicenumber"])) ?? "",
-      date: str(pick(row, ["date", "servicedate", "incidentdate"])) ?? "",
+      date: normalizeDate(str(pick(row, ["date", "servicedate", "incidentdate"]))) ?? "",
     };
   });
 }
@@ -224,10 +233,12 @@ export function payloadFromObject(
     claimId: str(pick(claimSrc, ["claimid", "id", "claim_id"])),
     policyNumber: str(pick(claimSrc, ["policynumber", "policy", "policy_no"])),
     claimant: str(pick(claimSrc, ["claimant", "insured", "patient", "name"])),
-    incidentDate: str(
-      pick(claimSrc, ["incidentdate", "dateofloss", "admissiondate"]),
+    incidentDate: normalizeDate(
+      str(pick(claimSrc, ["incidentdate", "dateofloss", "admissiondate"])),
     ),
-    filedDate: str(pick(claimSrc, ["fileddate", "intimationdate"])),
+    filedDate: normalizeDate(
+      str(pick(claimSrc, ["fileddate", "intimationdate"])),
+    ),
     domain: str(pick(claimSrc, ["domain", "lob", "lineofbusiness"])),
     claimType: str(pick(claimSrc, ["claimtype", "type"])),
     requestedAmount: num(
@@ -252,7 +263,8 @@ export function payloadFromObject(
         return [
           {
             claimId,
-            incidentDate: str(pick(row, ["incidentdate", "dateofloss"])) ?? "",
+            incidentDate:
+              normalizeDate(str(pick(row, ["incidentdate", "dateofloss"]))) ?? "",
             amount:
               num(pick(row, ["amount", "requestedamount", "paidamount"])) ?? 0,
             status: str(pick(row, ["status", "settlementstatus"])) ?? "unknown",
@@ -479,9 +491,10 @@ export function payloadFromText(
   const provider = text
     .match(/(?:hospital|provider|garage)[:\s]+([A-Za-z0-9 .&]+)/i)?.[1]
     ?.trim();
-  const date =
+  const date = normalizeDate(
     text.match(/\d{4}-\d{2}-\d{2}/)?.[0] ??
-    text.match(/\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/)?.[0];
+      text.match(/\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}/)?.[0],
+  );
   const requestedAmount = num(amountMatch?.[1]);
 
   const lineRegex = /(.+?)\s+₹?\s*([\d,]+(?:\.\d+)?)/g;
@@ -491,6 +504,8 @@ export function payloadFromText(
     const desc = m[1].trim();
     if (desc.length < 3 || desc.length > 80) continue;
     if (/total|amount|policy|claim/i.test(desc) && desc.length < 12) continue;
+    if ((desc.match(/[A-Za-z]/g) ?? []).length < 4) continue;
+    if (/claim\s*id|policy|invoice|patient|hospital|admission|discharge|date|signator|total|gst|tax/i.test(desc)) continue;
     invoiceLines.push({
       id: uid("LINE"),
       description: desc.slice(-60),
