@@ -1,29 +1,64 @@
-import { useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { EmptyState, PageHeader, Panel, QueueBadge, SeverityBadge } from '../components/ui'
-import { findingLabel, formatDate, inr } from '../lib/format'
-import { useAppStore } from '../store/useAppStore'
-import type { ClaimQueue } from '../types'
+import { useState } from "react";
+import { Check, FileQuestion, Pencil, X } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import {
+  EmptyState,
+  PageHeader,
+  Panel,
+  QueueBadge,
+  SeverityBadge,
+} from "../components/ui";
+import { findingLabel, formatDate, inr } from "../lib/format";
+import { useAppStore } from "../store/useAppStore";
+import type { ClaimQueue } from "../types";
+import type { FindingReviewAction } from "../lib/api";
 
 export function ClaimDetail() {
-  const { id } = useParams()
-  const navigate = useNavigate()
-  const { claims, moveQueue, addNote, role } = useAppStore()
-  const claim = claims.find((c) => c.id === id)
-  const [note, setNote] = useState(claim?.notes ?? '')
-  const [reason, setReason] = useState(claim?.specialReason ?? 'Needs supervisor judgement')
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { claims, moveQueue, addNote, reviewFinding, role } = useAppStore();
+  const claim = claims.find((c) => c.id === id);
+  const [note, setNote] = useState(claim?.notes ?? "");
+  const [reason, setReason] = useState(
+    claim?.specialReason ?? "Needs supervisor judgement",
+  );
+  const [correctedAmounts, setCorrectedAmounts] = useState<
+    Record<string, string>
+  >({});
+  const [reviewMessage, setReviewMessage] = useState("");
 
   if (!claim) {
     return (
-      <EmptyState title="Claim not on the desk" body="It may have been cleared from demo data. Go back to the workspace." />
-    )
+      <EmptyState
+        title="Claim not on the desk"
+        body="It may have been cleared from demo data. Go back to the workspace."
+      />
+    );
   }
 
-  const current = claim
-  const related = claims.filter((c) => current.relatedClaimIds.includes(c.id))
+  const current = claim;
+  const related = claims.filter((c) => current.relatedClaimIds.includes(c.id));
 
   function act(queue: ClaimQueue) {
-    moveQueue(current.id, queue, queue === 'special' ? reason : note)
+    moveQueue(current.id, queue, queue === "special" ? reason : note);
+  }
+
+  async function review(findingId: string, action: FindingReviewAction) {
+    const raw = correctedAmounts[findingId];
+    const amount = action === "CORRECT" ? Number(raw) : undefined;
+    try {
+      await reviewFinding(current.id, findingId, action, note, amount);
+      setReviewMessage(
+        "Finding review saved" +
+          (current.analysisId ? " and totals recalculated." : " locally."),
+      );
+    } catch (error) {
+      setReviewMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not save this finding review.",
+      );
+    }
   }
 
   return (
@@ -33,7 +68,11 @@ export function ClaimDetail() {
         title={claim.id}
         description={`${claim.claimant} · ${claim.provider} · ${claim.city}`}
         actions={
-          <button type="button" className="text-sm text-mute" onClick={() => navigate(-1)}>
+          <button
+            type="button"
+            className="text-sm text-mute"
+            onClick={() => navigate(-1)}
+          >
             Back
           </button>
         }
@@ -41,12 +80,17 @@ export function ClaimDetail() {
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <QueueBadge queue={claim.queue} />
-        <span className="rounded-full bg-white px-3 py-1 text-xs">Risk {claim.riskScore}</span>
         <span className="rounded-full bg-white px-3 py-1 text-xs">
-          Source {claim.sourceFormat} · {Math.round(claim.extractionConfidence * 100)}%
+          Risk {claim.riskScore}
+        </span>
+        <span className="rounded-full bg-white px-3 py-1 text-xs">
+          Source {claim.sourceFormat} ·{" "}
+          {Math.round(claim.extractionConfidence * 100)}%
         </span>
         {claim.missingFields.length ? (
-          <span className="rounded-full bg-ink px-3 py-1 text-xs text-brand">Missing: {claim.missingFields.join(', ')}</span>
+          <span className="rounded-full bg-ink px-3 py-1 text-xs text-brand">
+            Missing: {claim.missingFields.join(", ")}
+          </span>
         ) : null}
       </div>
 
@@ -57,33 +101,53 @@ export function ClaimDetail() {
         </div>
         <div className="rounded-2xl border border-line bg-white p-4">
           <p className="text-xs text-mute">Proposed settlement</p>
-          <p className="mt-1 font-mono text-xl">{inr(claim.proposedSettlement)}</p>
+          <p className="mt-1 font-mono text-xl">
+            {inr(claim.proposedSettlement)}
+          </p>
         </div>
         <div className="rounded-2xl border border-brand bg-brand p-4">
           <p className="text-xs text-ink/70">Expected (counterfactual)</p>
-          <p className="mt-1 font-mono text-xl">{inr(claim.expectedSettlement)}</p>
+          <p className="mt-1 font-mono text-xl">
+            {inr(claim.expectedSettlement)}
+          </p>
         </div>
         <div className="rounded-2xl border border-line bg-white p-4">
           <p className="text-xs text-mute">Confirmed leakage</p>
-          <p className="mt-1 font-mono text-xl">{inr(claim.confirmedLeakage)}</p>
+          <p className="mt-1 font-mono text-xl">
+            {inr(claim.confirmedLeakage)}
+          </p>
         </div>
         <div className="rounded-2xl border border-line bg-white p-4">
           <p className="text-xs text-mute">Potential only</p>
-          <p className="mt-1 font-mono text-xl">{inr(claim.potentialLeakage)}</p>
+          <p className="mt-1 font-mono text-xl">
+            {inr(claim.potentialLeakage)}
+          </p>
         </div>
       </div>
 
       <div className="mt-5 grid gap-4 xl:grid-cols-3">
-        <Panel title="Line items" action={<span className="text-xs text-mute">{claim.lines.length} rows</span>}>
+        <Panel
+          title="Line items"
+          action={
+            <span className="text-xs text-mute">{claim.lines.length} rows</span>
+          }
+        >
           {claim.lines.length === 0 ? (
-            <p className="text-sm text-mute">No lines extracted. Request the itemised invoice.</p>
+            <p className="text-sm text-mute">
+              No lines extracted. Request the itemised invoice.
+            </p>
           ) : (
             <ul className="space-y-2 text-sm">
               {claim.lines.map((l) => (
-                <li key={l.id} className="flex justify-between gap-3 rounded-xl bg-mist px-3 py-2">
+                <li
+                  key={l.id}
+                  className="flex justify-between gap-3 rounded-xl bg-mist px-3 py-2"
+                >
                   <span>
                     {l.description}
-                    <span className="block text-[11px] text-mute">{l.code || l.invoiceRef}</span>
+                    <span className="block text-[11px] text-mute">
+                      {l.code || l.invoiceRef}
+                    </span>
                   </span>
                   <span className="font-mono">{inr(l.amount)}</span>
                 </li>
@@ -102,20 +166,31 @@ export function ClaimDetail() {
           </ul>
         </Panel>
         <Panel title="Actions">
+          <p className="mb-3 text-xs text-mute">
+            Claim-level queue actions are separate from finding decisions. Use
+            the controls on each finding below to sync a review decision to the
+            engine.
+          </p>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="rounded-full bg-brand px-3 py-1.5 text-xs" onClick={() => act('good')}>
+            <button
+              type="button"
+              className="rounded-full bg-brand px-3 py-1.5 text-xs"
+              onClick={() => act("good")}
+            >
               Mark good
             </button>
-            <button type="button" className="rounded-full bg-ink px-3 py-1.5 text-xs text-white" onClick={() => act('confirmed')}>
-              Confirm leakage
-            </button>
-            <button type="button" className="rounded-full border border-line px-3 py-1.5 text-xs" onClick={() => act('dismissed')}>
-              Dismiss finding
-            </button>
-            <button type="button" className="rounded-full border border-line px-3 py-1.5 text-xs" onClick={() => act('unassessed')}>
+            <button
+              type="button"
+              className="rounded-full border border-line px-3 py-1.5 text-xs"
+              onClick={() => act("unassessed")}
+            >
               Request documents
             </button>
-            <button type="button" className="rounded-full bg-brand px-3 py-1.5 text-xs" onClick={() => act('special')}>
+            <button
+              type="button"
+              className="rounded-full bg-brand px-3 py-1.5 text-xs"
+              onClick={() => act("special")}
+            >
               Move to special review
             </button>
           </div>
@@ -133,34 +208,119 @@ export function ClaimDetail() {
             onChange={(e) => setNote(e.target.value)}
             placeholder={`${role} note`}
           />
-          <button type="button" className="mt-2 rounded-full bg-ink px-3 py-1.5 text-xs text-white" onClick={() => addNote(claim.id, note)}>
+          <button
+            type="button"
+            className="mt-2 rounded-full bg-ink px-3 py-1.5 text-xs text-white"
+            onClick={() => addNote(claim.id, note)}
+          >
             Save note
           </button>
-          <p className="mt-3 text-xs text-mute">Filed {formatDate(claim.filedDate)} · incident {formatDate(claim.incidentDate)}</p>
+          <p className="mt-3 text-xs text-mute">
+            Filed {formatDate(claim.filedDate)} · incident{" "}
+            {formatDate(claim.incidentDate)}
+          </p>
         </Panel>
       </div>
 
       <div className="mt-4 space-y-3">
         <h2 className="text-sm font-semibold">Explainable findings</h2>
+        {reviewMessage ? (
+          <p
+            className="rounded-xl border border-line bg-white px-3 py-2 text-sm"
+            role="status"
+          >
+            {reviewMessage}
+          </p>
+        ) : null}
         {claim.findings.length === 0 ? (
-          <p className="rounded-2xl border border-line bg-white p-4 text-sm text-mute">No leakage findings. This is a good claim unless new evidence arrives.</p>
+          <p className="rounded-2xl border border-line bg-white p-4 text-sm text-mute">
+            No leakage findings. This is a good claim unless new evidence
+            arrives.
+          </p>
         ) : (
           claim.findings.map((f) => (
-            <article key={f.id} className="rounded-2xl border border-line bg-white p-4">
+            <article
+              key={f.id}
+              className="rounded-2xl border border-line bg-white p-4"
+            >
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="font-medium">{f.title}</h3>
                 <SeverityBadge severity={f.severity} />
-                <span className="text-xs text-mute">{findingLabel[f.kind]} · {f.engine} · {f.certainty}</span>
-                {f.leakageAmount ? <span className="ml-auto font-mono text-sm">{inr(f.leakageAmount)}</span> : null}
+                <span className="text-xs text-mute">
+                  {findingLabel[f.kind]} · {f.engine} · {f.certainty}
+                </span>
+                {f.leakageAmount ? (
+                  <span className="ml-auto font-mono text-sm">
+                    {inr(f.leakageAmount)}
+                  </span>
+                ) : null}
               </div>
               <p className="mt-2 text-sm text-mute">{f.explanation}</p>
               <ul className="mt-2 flex flex-wrap gap-2">
                 {f.evidence.map((e) => (
-                  <li key={e} className="rounded-full bg-mist px-2 py-1 text-[11px]">
+                  <li
+                    key={e}
+                    className="rounded-full bg-mist px-2 py-1 text-[11px]"
+                  >
                     {e}
                   </li>
                 ))}
               </ul>
+              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+                <span className="mr-auto text-xs text-mute">
+                  Review: {f.reviewStatus ?? "PENDING"}
+                </span>
+                <button
+                  type="button"
+                  title="Confirm finding"
+                  aria-label="Confirm finding"
+                  onClick={() => void review(f.id, "CONFIRM")}
+                  className="inline-flex items-center gap-1 rounded-lg bg-brand px-2.5 py-1.5 text-xs"
+                >
+                  <Check size={14} /> Confirm
+                </button>
+                <button
+                  type="button"
+                  title="Dismiss finding"
+                  aria-label="Dismiss finding"
+                  onClick={() => void review(f.id, "DISMISS")}
+                  className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs"
+                >
+                  <X size={14} /> Dismiss
+                </button>
+                <button
+                  type="button"
+                  title="Request evidence"
+                  aria-label="Request evidence"
+                  onClick={() => void review(f.id, "REQUEST_EVIDENCE")}
+                  className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs"
+                >
+                  <FileQuestion size={14} /> Request evidence
+                </button>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={correctedAmounts[f.id] ?? String(f.leakageAmount)}
+                  onChange={(event) =>
+                    setCorrectedAmounts((values) => ({
+                      ...values,
+                      [f.id]: event.target.value,
+                    }))
+                  }
+                  aria-label={`Corrected amount for ${f.title}`}
+                  className="w-28 rounded-lg border border-line px-2 py-1.5 text-xs"
+                />
+                <button
+                  type="button"
+                  title="Save corrected amount"
+                  aria-label="Save corrected amount"
+                  onClick={() => void review(f.id, "CORRECT")}
+                  className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs"
+                >
+                  <Pencil size={14} /> Correct
+                </button>
+              </div>
             </article>
           ))
         )}
@@ -170,7 +330,10 @@ export function ClaimDetail() {
         <Panel title="Related claims">
           <ul className="text-sm">
             {related.map((r) => (
-              <li key={r.id} className="flex justify-between border-t border-line py-2 first:border-0">
+              <li
+                key={r.id}
+                className="flex justify-between border-t border-line py-2 first:border-0"
+              >
                 <Link className="hover:text-brand-dark" to={`/claims/${r.id}`}>
                   {r.id} · {r.claimant}
                 </Link>
@@ -181,5 +344,5 @@ export function ClaimDetail() {
         </Panel>
       ) : null}
     </div>
-  )
+  );
 }

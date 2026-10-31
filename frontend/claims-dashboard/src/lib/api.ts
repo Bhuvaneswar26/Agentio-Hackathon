@@ -1,31 +1,85 @@
-import type { Claim, ClaimQueue, Role } from '../types'
+import type { Role } from "../types";
 
 /** Backend origin derived from the configured detect URL, e.g. http://localhost:8000 */
 export function backendOrigin(agentUrl: string): string {
   try {
-    return new URL(agentUrl).origin
+    return new URL(agentUrl).origin;
   } catch {
-    return ''
+    return "";
   }
 }
 
-export const DEFAULT_AGENT_URL = import.meta.env.VITE_AGENT_URL ?? 'http://localhost:8000/v1/detect'
+export const DEFAULT_AGENT_URL =
+  import.meta.env.VITE_AGENT_URL ?? "http://localhost:8000/v1/detect";
 
-/** Mirror supervisor decisions on the desk back to the ClaimsGuard engine's review/audit trail (best effort). */
-export async function syncReview(agentUrl: string, claim: Claim, queue: ClaimQueue, role: Role, note?: string) {
-  if (!claim.analysisId || (queue !== 'confirmed' && queue !== 'dismissed')) return
-  const origin = backendOrigin(agentUrl)
-  if (!origin) return
-  const action = queue === 'confirmed' ? 'CONFIRM' : 'DISMISS'
-  await Promise.allSettled(
-    claim.findings
-      .filter((f) => f.backendId)
-      .map((f) =>
-        fetch(`${origin}/api/v1/findings/${encodeURIComponent(f.backendId!)}/review`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action, reviewer: role, notes: note }),
-        }),
-      ),
-  )
+export type FindingReviewAction =
+  | "CONFIRM"
+  | "DISMISS"
+  | "REQUEST_EVIDENCE"
+  | "CORRECT";
+
+export async function reviewFinding(
+  agentUrl: string,
+  findingId: string,
+  action: FindingReviewAction,
+  reviewer: Role,
+  notes?: string,
+  correctedAmount?: number,
+) {
+  const origin = backendOrigin(agentUrl);
+  if (!origin) throw new Error("Backend URL is invalid.");
+  const response = await fetch(
+    `${origin}/api/v1/findings/${encodeURIComponent(findingId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action,
+        reviewer,
+        notes,
+        corrected_amount: correctedAmount,
+      }),
+    },
+  );
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `Review was not saved (HTTP ${response.status})${body ? `: ${body.slice(0, 240)}` : ""}`,
+    );
+  }
+  return response.json() as Promise<{
+    success: boolean;
+    finding: { review_status?: string };
+  }>;
+}
+
+export async function recalculateAnalysis(
+  agentUrl: string,
+  analysisId: string,
+  reviewer: Role,
+) {
+  const origin = backendOrigin(agentUrl);
+  if (!origin) throw new Error("Backend URL is invalid.");
+  const response = await fetch(
+    `${origin}/api/v1/analyze/${encodeURIComponent(analysisId)}/recalculate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apply_review_decisions: true, reviewer }),
+    },
+  );
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `Totals could not be recalculated (HTTP ${response.status})${body ? `: ${body.slice(0, 240)}` : ""}`,
+    );
+  }
+  return response.json() as Promise<{
+    financial_summary?: { expected_settlement?: number };
+    leakage_summary?: {
+      calculated_leakage?: number;
+      estimated_leakage?: number;
+    };
+    risk_assessment?: { risk_score?: number };
+  }>;
 }

@@ -43,14 +43,16 @@ python samples/verify_samples.py   # all 5 leakage scenarios + a clean control +
 
 ### Try it in the dashboard
 
-- **Ingest** — load the health sample and press *Analyse with ClaimsGuard engine*. The dashboard
-  posts to `http://localhost:8000/v1/detect` (override with `VITE_AGENT_URL` or the *Agent
-  connection* page).
+- **Ingest** — load the health sample and press _Analyse with ClaimsGuard engine_. The dashboard
+  posts to `http://localhost:8000/v1/detect` (override with `VITE_AGENT_URL` or the _Agent
+  connection_ page).
 - **Policy reader** — upload `services/detection-agent/samples/policy-document.txt` (or any policy
   PDF/scan; OCR runs in the browser). The engine retrieves the governing clauses and extracts the
   deductible, co-payment, sum insured, sub-limits, exclusions and waiting periods, each cited back
-  to its clause. Press *Use for next ingest* and the next claim pack is assessed against those
-  clauses. Terms the document never states are listed as unresolved rather than assumed.
+  to its clause. Press _Use for next ingest_ and the next claim pack is assessed against those
+  clauses. Terms the document never states are listed as unresolved rather than assumed. For
+  Gemini-generated, clause-grounded answers, add your key to the backend's git-ignored
+  `services/detection-agent/.env` as `GEMINI_API_KEY`; never put the key in frontend code or chat.
 
 ## Repository layout
 

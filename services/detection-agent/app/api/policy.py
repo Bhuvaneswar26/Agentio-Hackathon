@@ -83,8 +83,21 @@ def ask(body: PolicyQuestionRequest):
         hits = index.search(body.question, top_k=body.top_k)
         try:
             result.update(answer_with_gemini(body.question, hits))
-        except Exception as exc:
-            raise HTTPException(503, {"error": "GEMINI_ANSWER_FAILED", "message": str(exc)}) from exc
+            result["answer_source"] = "gemini_grounded"
+        except Exception:
+            # Keep the retrieved, quoted clauses usable when Gemini is not configured or unavailable.
+            # Never replace the fallback with an unsupported generated answer.
+            available, reason = llm_available()
+            result["answer_source"] = "retrieval_fallback"
+            result["llm_notice"] = (
+                f"Gemini is not ready: {reason}. Showing retrieved policy clauses instead."
+                if not available else
+                "Gemini could not complete this request. Showing retrieved policy clauses instead."
+            )
+            result["provider"] = configured_provider()
+            result["model"] = configured_model()
+    elif result["answered"]:
+        result["answer_source"] = "retrieval"
     return jsonable({"success": True, **result})
 
 

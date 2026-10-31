@@ -1,31 +1,53 @@
-import { FileJson, Globe, Image as ImageIcon, Loader2, Send, Upload } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { PageHeader, Panel, SeverityBadge } from '../components/ui'
-import { runPreviewDetection } from '../lib/detectPreview'
-import { extractFromFile, extractFromUrl, formatLabel } from '../lib/extract'
-import { payloadFromObject, sampleJsonPayload } from '../lib/ingest'
-import { findingLabel, inr, uid } from '../lib/format'
-import { toPolicyRules } from '../lib/policyRag'
-import { useAppStore } from '../store/useAppStore'
-import type { Claim, DetectionPayload } from '../types'
+import {
+  AlertTriangle,
+  ExternalLink,
+  FileJson,
+  Globe,
+  Image as ImageIcon,
+  Loader2,
+  Send,
+  Upload,
+} from "lucide-react";
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { PageHeader, Panel, SeverityBadge } from "../components/ui";
+import { runPreviewDetection } from "../lib/detectPreview";
+import { extractFromFile, extractFromUrl, formatLabel } from "../lib/extract";
+import {
+  payloadFromObject,
+  sampleJsonPayload,
+  validateIntakePayload,
+} from "../lib/ingest";
+import { findingLabel, inr, uid } from "../lib/format";
+import { toPolicyRules } from "../lib/policyRag";
+import { useAppStore } from "../store/useAppStore";
+import type { Claim, DetectionPayload } from "../types";
 
 export function Ingest() {
-  const navigate = useNavigate()
-  const { addJob, updateJob, ingestPayloadAsClaim, addAgentClaim, agentUrl, log, claims, jobs, policyFromDocument } =
-    useAppStore()
-  const [payload, setPayload] = useState<DetectionPayload | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [url, setUrl] = useState('')
-  const [jsonText, setJsonText] = useState('')
-  const [error, setError] = useState('')
-  const [drag, setDrag] = useState(false)
-  const [claimId, setClaimId] = useState<string | null>(null)
+  const navigate = useNavigate();
+  const {
+    addJob,
+    updateJob,
+    ingestPayloadAsClaim,
+    addAgentClaim,
+    agentUrl,
+    log,
+    claims,
+    jobs,
+    policyFromDocument,
+  } = useAppStore();
+  const [payload, setPayload] = useState<DetectionPayload | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [url, setUrl] = useState("");
+  const [jsonText, setJsonText] = useState("");
+  const [error, setError] = useState("");
+  const [drag, setDrag] = useState(false);
+  const [claimId, setClaimId] = useState<string | null>(null);
   // A policy wording read on the Policy reader page supplies the terms a claim pack usually lacks.
   // Pack-supplied values win: the pack is the live record, the document is the fallback.
   const effectivePayload = useMemo<DetectionPayload | null>(() => {
-    if (!payload || !policyFromDocument) return payload
-    const doc = policyFromDocument.policy
+    if (!payload || !policyFromDocument) return payload;
+    const doc = policyFromDocument.policy;
     return {
       ...payload,
       policy: {
@@ -34,52 +56,79 @@ export function Ingest() {
         deductible: payload.policy.deductible ?? doc.deductible,
         copayPercent: payload.policy.copayPercent ?? doc.copayment_percentage,
         sumInsured: payload.policy.sumInsured ?? doc.sum_insured,
-        rules: payload.policy.rules.length ? payload.policy.rules : toPolicyRules(doc),
+        rules: payload.policy.rules.length
+          ? payload.policy.rules
+          : toPolicyRules(doc),
       },
-    }
-  }, [payload, policyFromDocument])
+    };
+  }, [payload, policyFromDocument]);
 
   const preview = useMemo(
-    () => (effectivePayload ? runPreviewDetection(effectivePayload, claims) : null),
+    () =>
+      effectivePayload ? runPreviewDetection(effectivePayload, claims) : null,
     [effectivePayload, claims],
-  )
+  );
+  const validationIssues = useMemo(
+    () => (effectivePayload ? validateIntakePayload(effectivePayload) : []),
+    [effectivePayload],
+  );
+  const blockingIssues = validationIssues.filter((issue) => issue.blocking);
 
-  async function run(label: string, fn: () => Promise<DetectionPayload> | DetectionPayload) {
-    setError('')
-    setBusy(true)
-    const jobId = uid('JOB')
-    addJob({ id: jobId, name: label, format: 'json', status: 'extracting', payload: null })
+  async function run(
+    label: string,
+    fn: () => Promise<DetectionPayload> | DetectionPayload,
+  ) {
+    setError("");
+    setBusy(true);
+    const jobId = uid("JOB");
+    addJob({
+      id: jobId,
+      name: label,
+      format: "json",
+      status: "extracting",
+      payload: null,
+    });
     try {
-      const next = await fn()
-      setPayload(next)
-      setClaimId(null)
-      updateJob(jobId, { status: 'ready', payload: next, format: next.source.format })
+      const next = await fn();
+      setPayload(next);
+      setClaimId(null);
+      updateJob(jobId, {
+        status: "ready",
+        payload: next,
+        format: next.source.format,
+      });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Extraction failed'
-      setError(message)
-      updateJob(jobId, { status: 'failed', error: message })
+      const message = err instanceof Error ? err.message : "Extraction failed";
+      setError(message);
+      updateJob(jobId, { status: "failed", error: message });
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
   }
 
   function onFiles(files: FileList | null) {
-    const file = files?.[0]
-    if (!file) return
-    void run(file.name, () => extractFromFile(file))
+    const file = files?.[0];
+    if (!file) return;
+    void run(file.name, () => extractFromFile(file));
   }
 
   function parkOnDesk() {
-    if (!effectivePayload || claimId) return
-    const id = ingestPayloadAsClaim(effectivePayload)
-    setClaimId(id)
+    if (!effectivePayload || claimId || blockingIssues.length) return;
+    const id = ingestPayloadAsClaim(effectivePayload);
+    setClaimId(id);
   }
 
   async function sendToAgent() {
-    if (!effectivePayload) return
-    const payload = effectivePayload
-    const jobId = uid('JOB')
-    addJob({ id: jobId, name: 'Detection agent', format: payload.source.format, status: 'extracting', payload })
+    if (!effectivePayload || blockingIssues.length) return;
+    const payload = effectivePayload;
+    const jobId = uid("JOB");
+    addJob({
+      id: jobId,
+      name: "Detection agent",
+      format: payload.source.format,
+      status: "extracting",
+      payload,
+    });
     try {
       // Desk claims travel as history so the engine can detect duplicates across the portfolio.
       const history = claims.slice(0, 200).map((c) => ({
@@ -90,43 +139,48 @@ export function Ingest() {
         claimant: c.claimant,
         provider: c.provider,
         invoiceLines: c.lines,
-      }))
+      }));
       const res = await fetch(agentUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, history: [...payload.history, ...history] }),
-      })
-      const text = await res.text()
-      let parsed: { claim?: Claim; status?: string } | null = null
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...payload,
+          history: [...payload.history, ...history],
+        }),
+      });
+      const text = await res.text();
+      let parsed: { claim?: Claim; status?: string } | null = null;
       try {
-        parsed = JSON.parse(text)
+        parsed = JSON.parse(text);
       } catch {
-        parsed = null
+        parsed = null;
       }
       updateJob(jobId, {
-        status: res.ok ? 'sent' : 'failed',
+        status: res.ok ? "sent" : "failed",
         sentAt: new Date().toISOString(),
         agentResponse: text.slice(0, 4000),
         error: res.ok ? undefined : `HTTP ${res.status}`,
-      })
+      });
       log({
-        actor: 'Ingestion desk',
-        action: res.ok ? 'Sent payload to detection agent' : 'Agent call failed — local preview still available',
+        actor: "Ingestion desk",
+        action: res.ok
+          ? "Sent payload to detection agent"
+          : "Agent call failed — local preview still available",
         detail: `${agentUrl} · ${res.status}`,
-      })
+      });
       if (res.ok && parsed?.claim && !claimId) {
-        setClaimId(addAgentClaim(parsed.claim))
+        setClaimId(addAgentClaim(parsed.claim));
       } else if (!res.ok && !claimId) {
-        setClaimId(ingestPayloadAsClaim(payload))
+        setClaimId(ingestPayloadAsClaim(payload));
       }
     } catch (err) {
       updateJob(jobId, {
-        status: 'failed',
-        error: `${err instanceof Error ? err.message : 'Network error'} · parked with local preview instead`,
-      })
+        status: "failed",
+        error: `${err instanceof Error ? err.message : "Network error"} · parked with local preview instead`,
+      });
       if (!claimId) {
-        const id = ingestPayloadAsClaim(payload)
-        setClaimId(id)
+        const id = ingestPayloadAsClaim(payload);
+        setClaimId(id);
       }
     }
   }
@@ -143,8 +197,10 @@ export function Ingest() {
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-brand bg-brand/10 px-4 py-3 text-sm text-ink">
           <FileJson className="mt-0.5 h-4 w-4 shrink-0 text-brand-dark" />
           <span>
-            Policy terms read from <strong>{policyFromDocument.sourceName}</strong> will fill any term this pack
-            does not carry. Values in the pack itself still take precedence.
+            Policy terms read from{" "}
+            <strong>{policyFromDocument.sourceName}</strong> will fill any term
+            this pack does not carry. Values in the pack itself still take
+            precedence.
           </span>
         </div>
       ) : null}
@@ -153,26 +209,30 @@ export function Ingest() {
         <div className="space-y-4 xl:col-span-2">
           <label
             onDragOver={(e) => {
-              e.preventDefault()
-              setDrag(true)
+              e.preventDefault();
+              setDrag(true);
             }}
             onDragLeave={() => setDrag(false)}
             onDrop={(e) => {
-              e.preventDefault()
-              setDrag(false)
-              onFiles(e.dataTransfer.files)
+              e.preventDefault();
+              setDrag(false);
+              onFiles(e.dataTransfer.files);
             }}
             className={`block cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center ${
-              drag ? 'border-brand bg-brand/20' : 'border-line bg-white'
+              drag ? "border-brand bg-brand/20" : "border-line bg-white"
             }`}
           >
             <Upload className="mx-auto text-brand-dark" />
-            <p className="mt-3 font-medium">Drop PDF, image, JSON, CSV or Excel</p>
-            <p className="mt-1 text-sm text-mute">Max 12 MB. Scanned PDFs use OCR automatically.</p>
+            <p className="mt-3 font-medium">
+              Drop PDF, image, JSON, CSV or Excel
+            </p>
+            <p className="mt-1 text-sm text-mute">
+              Max 12 MB. Scanned PDFs use OCR automatically.
+            </p>
             <input
               type="file"
               className="hidden"
-              accept=".json,.csv,.xlsx,.xls,.pdf,.png,.jpg,.jpeg,.webp,.txt"
+              accept=".json,.csv,.xlsx,.pdf,.png,.jpg,.jpeg,.webp,.txt"
               onChange={(e) => onFiles(e.target.files)}
             />
           </label>
@@ -208,7 +268,9 @@ export function Ingest() {
               className="mt-3 rounded-full bg-ink px-4 py-2 text-sm text-white"
               onClick={() =>
                 jsonText &&
-                void run('pasted.json', () => payloadFromObject(JSON.parse(jsonText), 'json', 'paste.json'))
+                void run("pasted.json", () =>
+                  payloadFromObject(JSON.parse(jsonText), "json", "paste.json"),
+                )
               }
             >
               Parse JSON
@@ -218,15 +280,25 @@ export function Ingest() {
           <button
             type="button"
             className="flex w-full items-center justify-center gap-2 rounded-2xl border border-line bg-white px-4 py-3 text-sm"
-            onClick={() => void run('sample-health-claim.json', () => sampleJsonPayload())}
+            onClick={() =>
+              void run("sample-health-claim.json", () => sampleJsonPayload())
+            }
           >
             <FileJson size={16} className="text-brand-dark" />
             Load the health leakage sample
           </button>
           <p className="text-center text-xs text-mute">
-            Also in repo: <a className="underline" href="/samples/health-claim.json">JSON</a>
-            {' · '}
-            <a className="underline" href="/samples/health-claim.csv">CSV</a>
+            Also in repo:{" "}
+            <a
+              className="inline-flex items-center gap-1 underline"
+              href="/samples/health-claim.json"
+            >
+              JSON <ExternalLink size={11} />
+            </a>
+            {" · "}
+            <a className="underline" href="/samples/health-claim.csv">
+              CSV
+            </a>
           </p>
         </div>
 
@@ -236,14 +308,16 @@ export function Ingest() {
             action={
               payload ? (
                 <span className="text-xs text-mute">
-                  {formatLabel(payload.source.format)} · {Math.round(payload.source.confidence * 100)}% confidence
+                  {formatLabel(payload.source.format)} ·{" "}
+                  {Math.round(payload.source.confidence * 100)}% confidence
                 </span>
               ) : null
             }
           >
             {busy ? (
               <div className="flex items-center gap-2 py-16 justify-center text-sm text-mute">
-                <Loader2 className="animate-spin" size={18} /> Extracting with the matching engine…
+                <Loader2 className="animate-spin" size={18} /> Extracting with
+                the matching engine…
               </div>
             ) : error && !payload ? (
               <p className="py-10 text-center text-sm">{error}</p>
@@ -252,54 +326,104 @@ export function Ingest() {
                 {error ? <p className="mb-3 text-sm">{error}</p> : null}
                 {payload.source.ocrUsed ? (
                   <p className="mb-3 flex items-center gap-2 rounded-xl bg-mist px-3 py-2 text-xs">
-                    <ImageIcon size={14} /> OCR was used because the source was an image or a scanned PDF.
+                    <ImageIcon size={14} /> OCR was used because the source was
+                    an image or a scanned PDF.
                   </p>
                 ) : null}
                 {payload.source.warnings.map((w) => (
-                  <p key={w} className="mb-2 rounded-xl border border-line px-3 py-2 text-xs text-mute">
+                  <p
+                    key={w}
+                    className="mb-2 rounded-xl border border-line px-3 py-2 text-xs text-mute"
+                  >
                     {w}
                   </p>
                 ))}
+                {validationIssues.length ? (
+                  <section
+                    className={`mb-3 rounded-xl border p-3 ${blockingIssues.length ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"}`}
+                    aria-live="polite"
+                  >
+                    <h3 className="flex items-center gap-2 text-sm font-semibold">
+                      <AlertTriangle size={15} /> Intake checks ·{" "}
+                      {blockingIssues.length} blocking ·{" "}
+                      {validationIssues.length - blockingIssues.length} review
+                    </h3>
+                    <ul className="mt-2 space-y-1 text-xs">
+                      {validationIssues.map((issue, index) => (
+                        <li
+                          key={`${issue.row ?? issue.field}-${issue.field}-${index}`}
+                        >
+                          <span className="font-medium">
+                            {issue.row ? `${issue.row} · ` : ""}
+                            {issue.field}:
+                          </span>{" "}
+                          {issue.message}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
                 {payload.extraction.missingFields.length ? (
                   <p className="mb-3 rounded-xl bg-ink px-3 py-2 text-xs text-brand">
-                    Incomplete pack: {payload.extraction.missingFields.join(', ')}. This will sit in unassessed, not as leakage.
+                    Incomplete pack:{" "}
+                    {payload.extraction.missingFields.join(", ")}. This will sit
+                    in unassessed, not as leakage.
                   </p>
                 ) : (
-                  <p className="mb-3 rounded-xl bg-brand/20 px-3 py-2 text-xs">Ready for the detection agent.</p>
+                  <p className="mb-3 rounded-xl bg-brand/20 px-3 py-2 text-xs">
+                    Ready for the detection agent.
+                  </p>
                 )}
                 <dl className="mb-3 grid grid-cols-2 gap-2 text-sm">
                   <div>
                     <dt className="text-xs text-mute">Claim</dt>
-                    <dd>{payload.claim.claimId || '—'}</dd>
+                    <dd>{payload.claim.claimId || "—"}</dd>
                   </div>
                   <div>
                     <dt className="text-xs text-mute">Policy</dt>
-                    <dd>{payload.claim.policyNumber || '—'}</dd>
+                    <dd>{payload.claim.policyNumber || "—"}</dd>
                   </div>
                   <div>
                     <dt className="text-xs text-mute">Claimant</dt>
-                    <dd>{payload.claim.claimant || '—'}</dd>
+                    <dd>{payload.claim.claimant || "—"}</dd>
                   </div>
                   <div>
                     <dt className="text-xs text-mute">Amount</dt>
-                    <dd>{payload.claim.requestedAmount ?? '—'}</dd>
+                    <dd>{payload.claim.requestedAmount ?? "—"}</dd>
                   </div>
                 </dl>
                 {preview ? (
                   <div className="mb-3 rounded-xl border border-line bg-mist p-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-mute">Local preview (until the agent replies)</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-mute">
+                      Provisional intake signals · not engine-confirmed
+                    </p>
                     <p className="mt-1 text-sm">
-                      Queue {preview.queue} · risk {preview.riskScore} · confirmed {inr(preview.confirmedLeakage)} · potential {inr(preview.potentialLeakage)}
+                      Queue {preview.queue} · preview risk {preview.riskScore} ·
+                      potential to review {inr(preview.potentialLeakage)}
+                    </p>
+                    <p className="mt-1 text-xs text-mute">
+                      Policy findings are checked only against terms supplied in
+                      this pack or the selected policy document. Review exact
+                      and repeat-service matches before acting.
                     </p>
                     <ul className="mt-2 space-y-2">
                       {preview.findings.map((f) => (
-                        <li key={f.id} className="rounded-lg bg-white px-3 py-2 text-xs">
+                        <li
+                          key={f.id}
+                          className="rounded-lg bg-white px-3 py-2 text-xs"
+                        >
                           <span className="font-medium">{f.title}</span>
-                          <span className="ml-2 text-mute">{findingLabel[f.kind]}</span>
+                          <span className="ml-2 text-mute">
+                            {findingLabel[f.kind]}
+                          </span>
                           <span className="ml-2">
                             <SeverityBadge severity={f.severity} />
                           </span>
-                          {f.leakageAmount ? <span className="ml-2 font-mono">{inr(f.leakageAmount)}</span> : null}
+                          {f.leakageAmount ? (
+                            <span className="ml-2 font-mono">
+                              {inr(f.leakageAmount)}
+                            </span>
+                          ) : null}
                         </li>
                       ))}
                     </ul>
@@ -309,16 +433,27 @@ export function Ingest() {
                   {JSON.stringify(payload, null, 2)}
                 </pre>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <button type="button" onClick={parkOnDesk} className="rounded-full bg-brand px-4 py-2 text-sm text-ink">
+                  <button
+                    type="button"
+                    disabled={blockingIssues.length > 0}
+                    onClick={parkOnDesk}
+                    className="rounded-full bg-brand px-4 py-2 text-sm text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                  >
                     Park on claims desk
                   </button>
                   <button
                     type="button"
                     onClick={() => void sendToAgent()}
-                    className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm text-white"
+                    disabled={blockingIssues.length > 0}
+                    className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Send size={14} /> Analyse with ClaimsGuard engine
                   </button>
+                  {blockingIssues.length ? (
+                    <span className="self-center text-xs text-red-700">
+                      Resolve blocking intake issues before continuing.
+                    </span>
+                  ) : null}
                   {claimId ? (
                     <button
                       type="button"
@@ -332,7 +467,8 @@ export function Ingest() {
               </div>
             ) : (
               <p className="py-10 text-center text-sm text-mute">
-                Extraction preview will appear here. The JSON below is the contract for the other project&apos;s detection agent.
+                Extraction preview will appear here. The JSON below is the
+                contract for the other project&apos;s detection agent.
               </p>
             )}
           </Panel>
@@ -346,7 +482,9 @@ export function Ingest() {
                 <li key={j.id} className="rounded-xl bg-mist px-3 py-2 text-sm">
                   <span className="font-medium">{j.name}</span>
                   <span className="ml-2 text-xs text-mute">{j.status}</span>
-                  {j.error ? <p className="text-xs text-mute">{j.error}</p> : null}
+                  {j.error ? (
+                    <p className="text-xs text-mute">{j.error}</p>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -354,5 +492,5 @@ export function Ingest() {
         </div>
       ) : null}
     </div>
-  )
+  );
 }

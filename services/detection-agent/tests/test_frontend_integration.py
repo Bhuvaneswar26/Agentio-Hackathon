@@ -42,6 +42,7 @@ def test_dashboard_payload_round_trip(client):
     assert c["confirmedLeakage"] >= 9000  # 6000 room excess + 3000 excluded gloves
     room = next(f for f in c["findings"] if f["kind"] == "limit_breach")
     assert room["leakageAmount"] == 6000 and room["policyClause"] == "PR-ROOM" and room["certainty"] == "confirmed"
+    assert room["reviewStatus"] == "PENDING"
     assert body["analysis"]["financial_summary"]["expected_settlement"] >= 0
 
 

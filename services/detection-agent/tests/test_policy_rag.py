@@ -273,7 +273,7 @@ def test_gemini_provider_uses_structured_output_and_keeps_citations(index, monke
     assert len(facts) == 1
     assert facts[0].clause_id == "1.2"
     assert info["provider"] == "gemini"
-    assert info["model"] == "gemini-2.5-flash"
+    assert info["model"] == "gemini-3.6-flash"
     assert info["input_tokens"] == 12
     request = client_type.return_value.models.generate_content.call_args.kwargs
     assert request["config"].response_mime_type == "application/json"

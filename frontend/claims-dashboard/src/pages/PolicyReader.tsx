@@ -1,34 +1,58 @@
-import { AlertTriangle, BookOpen, Check, FileText, HelpCircle, Loader2, Quote, Upload } from 'lucide-react'
-import { useState } from 'react'
-import { EmptyState, PageHeader, Panel } from '../components/ui'
-import { extractFromFile } from '../lib/extract'
-import { inr } from '../lib/format'
+import {
+  AlertTriangle,
+  BookOpen,
+  Check,
+  FileText,
+  HelpCircle,
+  Loader2,
+  Quote,
+  Upload,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import { EmptyState, PageHeader, Panel } from "../components/ui";
+import { extractFromFile } from "../lib/extract";
+import { inr } from "../lib/format";
 import {
   askPolicyQuestion,
   extractPolicyFromDocument,
+  fetchRagStatus,
   type PolicyAnswer,
   type PolicyExtraction,
-} from '../lib/policyRag'
-import { useAppStore } from '../store/useAppStore'
+  type RagStatus,
+} from "../lib/policyRag";
+import { useAppStore } from "../store/useAppStore";
 
 /** Read the document's plain text. PDFs and images reuse the ingest extractor (pdf.js / Tesseract). */
 async function readDocument(file: File): Promise<string> {
-  const name = file.name.toLowerCase()
-  if (name.endsWith('.txt') || name.endsWith('.md') || name.endsWith('.csv')) {
-    return file.text()
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".csv")) {
+    return file.text();
   }
-  const payload = await extractFromFile(file)
-  const raw = payload.extraction.rawText
-  if (!raw || raw.replace(/\s/g, '').length < 40) {
-    throw new Error('No readable text came out of that file. If it is a scanned policy, try a clearer scan.')
+  const payload = await extractFromFile(file);
+  const raw = payload.extraction.rawText;
+  if (!raw || raw.replace(/\s/g, "").length < 40) {
+    throw new Error(
+      "No readable text came out of that file. If it is a scanned policy, try a clearer scan.",
+    );
   }
-  return raw
+  return raw;
 }
 
 function Confidence({ value }: { value: number }) {
-  const pct = Math.round(value * 100)
-  const tone = pct >= 80 ? 'bg-brand/20 text-[#0b6b45]' : pct >= 60 ? 'bg-mist text-ink' : 'bg-white border border-line text-mute'
-  return <span className={`inline-flex rounded-full px-2 py-0.5 font-mono text-[11px] ${tone}`}>{pct}%</span>
+  const pct = Math.round(value * 100);
+  const tone =
+    pct >= 80
+      ? "bg-brand/20 text-[#0b6b45]"
+      : pct >= 60
+        ? "bg-mist text-ink"
+        : "bg-white border border-line text-mute";
+  return (
+    <span
+      className={`inline-flex rounded-full px-2 py-0.5 font-mono text-[11px] ${tone}`}
+    >
+      {pct}%
+    </span>
+  );
 }
 
 function CitedRow({
@@ -38,11 +62,11 @@ function CitedRow({
   confidence,
   snippet,
 }: {
-  label: string
-  value: string
-  citation?: string
-  confidence?: number
-  snippet?: string
+  label: string;
+  value: string;
+  citation?: string;
+  confidence?: number;
+  snippet?: string;
 }) {
   return (
     <div className="border-b border-line py-2.5 last:border-0">
@@ -59,92 +83,118 @@ function CitedRow({
           {citation}
         </p>
       ) : null}
-      {snippet ? <p className="mt-1 line-clamp-2 text-xs italic text-mute">“{snippet}”</p> : null}
+      {snippet ? (
+        <p className="mt-1 line-clamp-2 text-xs italic text-mute">
+          “{snippet}”
+        </p>
+      ) : null}
     </div>
-  )
+  );
 }
 
 export function PolicyReader() {
-  const { agentUrl, policyFromDocument, setPolicyFromDocument, log } = useAppStore()
-  const [text, setText] = useState('')
-  const [sourceName, setSourceName] = useState('')
-  const [policyNumber, setPolicyNumber] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const [result, setResult] = useState<PolicyExtraction | null>(null)
-  const [question, setQuestion] = useState('')
-  const [answer, setAnswer] = useState<PolicyAnswer | null>(null)
-  const [asking, setAsking] = useState(false)
+  const { agentUrl, policyFromDocument, setPolicyFromDocument, log } =
+    useAppStore();
+  const [text, setText] = useState("");
+  const [sourceName, setSourceName] = useState("");
+  const [policyNumber, setPolicyNumber] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<PolicyExtraction | null>(null);
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState<PolicyAnswer | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [ragStatus, setRagStatus] = useState<RagStatus | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void fetchRagStatus(agentUrl)
+      .then((status) => {
+        if (active) setRagStatus(status);
+      })
+      .catch(() => {
+        if (active) setRagStatus(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [agentUrl]);
 
   async function onFile(files: FileList | null) {
-    const file = files?.[0]
-    if (!file) return
-    setError('')
-    setBusy(true)
+    const file = files?.[0];
+    if (!file) return;
+    setError("");
+    setBusy(true);
     try {
-      const content = await readDocument(file)
-      setText(content)
-      setSourceName(file.name)
-      setResult(null)
-      setAnswer(null)
+      const content = await readDocument(file);
+      setText(content);
+      setSourceName(file.name);
+      setResult(null);
+      setAnswer(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not read that file')
+      setError(err instanceof Error ? err.message : "Could not read that file");
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
   }
 
   async function runExtraction() {
     if (!text.trim()) {
-      setError('Paste the policy wording or upload a document first.')
-      return
+      setError("Paste the policy wording or upload a document first.");
+      return;
     }
-    setError('')
-    setBusy(true)
+    setError("");
+    setBusy(true);
     try {
       const res = await extractPolicyFromDocument(agentUrl, text, {
         policyNumber: policyNumber || undefined,
-        policyType: 'HEALTH',
+        policyType: "HEALTH",
         useLlm: true,
-      })
-      setResult(res)
+      });
+      setResult(res);
       log({
-        actor: 'Policy reader',
-        action: 'Extracted policy terms from a document',
-        detail: `${sourceName || 'pasted text'} · ${res.facts.length} cited facts · ${res.conflicts.length} conflict(s)`,
-      })
+        actor: "Policy reader",
+        action: "Extracted policy terms from a document",
+        detail: `${sourceName || "pasted text"} · ${res.facts.length} cited facts · ${res.conflicts.length} conflict(s)`,
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Extraction failed')
+      setError(err instanceof Error ? err.message : "Extraction failed");
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
   }
 
   async function ask() {
-    if (!question.trim() || !text.trim()) return
-    setAsking(true)
-    setError('')
+    if (!question.trim() || !text.trim()) return;
+    setAsking(true);
+    setError("");
     try {
-      setAnswer(await askPolicyQuestion(agentUrl, text, question))
+      setAnswer(await askPolicyQuestion(agentUrl, text, question));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Lookup failed')
+      setError(err instanceof Error ? err.message : "Lookup failed");
     } finally {
-      setAsking(false)
+      setAsking(false);
     }
   }
 
   function applyToIngest() {
-    if (!result) return
-    setPolicyFromDocument({ policy: result.policy, sourceName: sourceName || 'pasted policy wording' })
+    if (!result) return;
+    setPolicyFromDocument({
+      policy: result.policy,
+      sourceName: sourceName || "pasted policy wording",
+    });
     log({
-      actor: 'Policy reader',
-      action: 'Applied document-derived policy terms to the ingest desk',
+      actor: "Policy reader",
+      action: "Applied document-derived policy terms to the ingest desk",
       detail: result.policy.policy_number,
-    })
+    });
   }
 
-  const policy = result?.policy
-  const cites = (policy?.extraction_citations ?? {}) as Record<string, { citation?: string; confidence?: number; snippet?: string }>
+  const policy = result?.policy;
+  const cites = (policy?.extraction_citations ?? {}) as Record<
+    string,
+    { citation?: string; confidence?: number; snippet?: string }
+  >;
 
   return (
     <div>
@@ -153,6 +203,29 @@ export function PolicyReader() {
         title="Read a policy document"
         description="Upload or paste a policy wording. The engine retrieves the governing clauses and extracts the deductible, co-payment, sum insured, sub-limits, exclusions and waiting periods — each one cited back to the clause it came from. Terms the document does not state are reported as unresolved, never assumed."
       />
+
+      <div
+        className={`mb-4 flex items-start gap-2 rounded-xl border px-4 py-3 text-sm ${ragStatus?.llm_extraction?.status === "AVAILABLE" ? "border-brand/40 bg-brand/10" : "border-amber-200 bg-amber-50"}`}
+        role="status"
+      >
+        <HelpCircle className="mt-0.5 h-4 w-4 shrink-0" />
+        <div>
+          <p className="font-medium">
+            Gemini{" "}
+            {ragStatus?.llm_extraction?.status === "AVAILABLE"
+              ? "ready"
+              : "not configured"}
+            {ragStatus?.llm_extraction?.model
+              ? ` · ${ragStatus.llm_extraction.model}`
+              : ""}
+          </p>
+          <p className="mt-0.5 text-xs">
+            {ragStatus?.llm_extraction?.status === "AVAILABLE"
+              ? "Policy answers use retrieved clauses as context and require clause citations."
+              : "Set GEMINI_API_KEY in services/detection-agent/.env (never in the frontend or chat), then restart the backend. Retrieval-only clause answers remain available."}
+          </p>
+        </div>
+      </div>
 
       {error ? (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-line bg-white px-4 py-3 text-sm text-ink">
@@ -167,8 +240,12 @@ export function PolicyReader() {
           <Panel title="Policy document">
             <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed border-line bg-mist/40 px-4 py-6 text-center transition hover:border-brand">
               <Upload className="h-5 w-5 text-brand-dark" />
-              <span className="text-sm font-medium text-ink">Upload a policy wording</span>
-              <span className="text-xs text-mute">PDF, text, markdown or a scan (OCR runs in the browser)</span>
+              <span className="text-sm font-medium text-ink">
+                Upload a policy wording
+              </span>
+              <span className="text-xs text-mute">
+                PDF, text, markdown or a scan (OCR runs in the browser)
+              </span>
               <input
                 type="file"
                 className="hidden"
@@ -180,11 +257,13 @@ export function PolicyReader() {
             <textarea
               value={text}
               onChange={(e) => {
-                setText(e.target.value)
-                setResult(null)
+                setText(e.target.value);
+                setResult(null);
               }}
               rows={12}
-              placeholder={'…or paste the policy wording here, for example:\n\nSECTION 2 - SUB-LIMITS\n2.1 Room Rent\n    Room rent is payable up to Rs. 5,000 per day of hospitalisation.'}
+              placeholder={
+                "…or paste the policy wording here, for example:\n\nSECTION 2 - SUB-LIMITS\n2.1 Room Rent\n    Room rent is payable up to Rs. 5,000 per day of hospitalisation."
+              }
               className="mt-3 w-full rounded-xl border border-line bg-white px-3 py-2 font-mono text-xs text-ink outline-none focus:border-brand"
             />
 
@@ -197,8 +276,9 @@ export function PolicyReader() {
               />
             </div>
             <p className="mt-1 text-xs text-mute">
-              Gemini runs over retrieved clauses and must cite the policy wording. The rule-based extraction also
-              runs, and the engine key stays on the backend.
+              Gemini runs over retrieved clauses and must cite the policy
+              wording. The rule-based extraction also runs, and the engine key
+              stays on the backend.
             </p>
 
             <button
@@ -207,7 +287,11 @@ export function PolicyReader() {
               disabled={busy || !text.trim()}
               className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-ink px-4 py-2.5 text-sm font-medium text-white transition hover:bg-ink/90 disabled:opacity-50"
             >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpen className="h-4 w-4" />}
+              {busy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <BookOpen className="h-4 w-4" />
+              )}
               Extract policy terms
             </button>
           </Panel>
@@ -218,7 +302,7 @@ export function PolicyReader() {
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') void ask()
+                  if (e.key === "Enter") void ask();
                 }}
                 placeholder="Are consumables payable?"
                 className="flex-1 rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
@@ -229,7 +313,11 @@ export function PolicyReader() {
                 disabled={asking || !text.trim() || !question.trim()}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-medium text-ink transition hover:border-brand disabled:opacity-50"
               >
-                {asking ? <Loader2 className="h-4 w-4 animate-spin" /> : <HelpCircle className="h-4 w-4" />}
+                {asking ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <HelpCircle className="h-4 w-4" />
+                )}
                 Ask
               </button>
             </div>
@@ -237,26 +325,51 @@ export function PolicyReader() {
               answer.answered ? (
                 <div className="mt-3 space-y-2">
                   {answer.clauses.slice(0, 3).map((c) => (
-                    <div key={c.citation + c.text.slice(0, 20)} className="rounded-xl border border-line bg-mist/30 p-3">
-                      <p className="text-xs font-medium text-brand-dark">{c.citation}</p>
-                      <p className="mt-1 whitespace-pre-wrap text-xs text-ink">{c.text}</p>
+                    <div
+                      key={c.citation + c.text.slice(0, 20)}
+                      className="rounded-xl border border-line bg-mist/30 p-3"
+                    >
+                      <p className="text-xs font-medium text-brand-dark">
+                        {c.citation}
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-xs text-ink">
+                        {c.text}
+                      </p>
                     </div>
                   ))}
                   {answer.answer ? (
                     <div className="rounded-xl border border-brand/40 bg-brand/10 p-3">
-                      <p className="text-xs font-semibold text-brand-dark">Gemini answer</p>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-ink">{answer.answer}</p>
+                      <p className="text-xs font-semibold text-brand-dark">
+                        {answer.answer_source === "retrieval_fallback"
+                          ? "Retrieved policy answer · Gemini unavailable"
+                          : answer.answer_source === "retrieval"
+                            ? "Retrieved policy answer"
+                            : `Gemini answer${answer.model ? ` · ${answer.model}` : ""}`}
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-ink">
+                        {answer.answer}
+                      </p>
                       {answer.cited_clauses?.length ? (
-                        <p className="mt-1 text-xs text-mute">Cited clauses: {answer.cited_clauses.join(', ')}</p>
+                        <p className="mt-1 text-xs text-mute">
+                          Cited clauses: {answer.cited_clauses.join(", ")}
+                        </p>
                       ) : null}
                     </div>
                   ) : null}
+                  {answer.llm_notice ? (
+                    <p className="text-xs text-amber-800" role="status">
+                      {answer.llm_notice}
+                    </p>
+                  ) : null}
                   <p className="text-xs text-mute">
-                    Gemini answers from the retrieved clauses; the original wording is quoted above for verification.
+                    Answers use retrieved clauses only; the original wording is
+                    quoted above for verification.
                   </p>
                 </div>
               ) : (
-                <p className="mt-3 text-sm text-mute">{answer.reason ?? 'Nothing in the document matched.'}</p>
+                <p className="mt-3 text-sm text-mute">
+                  {answer.reason ?? "Nothing in the document matched."}
+                </p>
               )
             ) : null}
           </Panel>
@@ -288,7 +401,12 @@ export function PolicyReader() {
                   <span>{result.document.chunks} chunks</span>
                   <span>{result.document.clauses_detected} clauses</span>
                   <span>{result.facts.length} cited facts</span>
-                  <span>Gemini pass: {result.llm_extraction.status.toLowerCase().replace(/_/g, ' ')}</span>
+                  <span>
+                    Gemini pass:{" "}
+                    {result.llm_extraction.status
+                      .toLowerCase()
+                      .replace(/_/g, " ")}
+                  </span>
                 </div>
 
                 {policy?.deductible != null ? (
@@ -321,15 +439,15 @@ export function PolicyReader() {
                 {(policy?.sublimits ?? []).map((s) => (
                   <CitedRow
                     key={`${s.category}-${s.daily_limit ?? s.limit}`}
-                    label={`${s.category.replace(/_/g, ' ')} ${s.daily_limit != null ? '(per day)' : '(per year)'}`}
+                    label={`${s.category.replace(/_/g, " ")} ${s.daily_limit != null ? "(per day)" : "(per year)"}`}
                     value={inr(s.daily_limit ?? s.limit ?? 0)}
                     citation={s.clause_reference}
                   />
                 ))}
                 {(policy?.waiting_periods ?? []).map((w) => (
                   <CitedRow
-                    key={`wp-${w.days}-${w.category ?? 'all'}`}
-                    label={`Waiting period${w.category ? ` — ${w.category}` : ' (policy-wide)'}`}
+                    key={`wp-${w.days}-${w.category ?? "all"}`}
+                    label={`Waiting period${w.category ? ` — ${w.category}` : " (policy-wide)"}`}
                     value={`${w.days} days`}
                     citation={w.clause_reference}
                   />
@@ -340,12 +458,19 @@ export function PolicyReader() {
                 <Panel title={`Exclusions (${policy?.exclusions?.length})`}>
                   <ul className="space-y-2">
                     {policy?.exclusions?.map((e) => (
-                      <li key={e.description.slice(0, 40)} className="rounded-xl border border-line p-3">
+                      <li
+                        key={e.description.slice(0, 40)}
+                        className="rounded-xl border border-line p-3"
+                      >
                         <p className="text-xs font-semibold uppercase tracking-wide text-brand-dark">
-                          {e.category.replace(/_/g, ' ')}
+                          {e.category.replace(/_/g, " ")}
                         </p>
                         <p className="mt-1 text-sm text-ink">{e.description}</p>
-                        {e.clause_reference ? <p className="mt-1 text-xs text-mute">{e.clause_reference}</p> : null}
+                        {e.clause_reference ? (
+                          <p className="mt-1 text-xs text-mute">
+                            {e.clause_reference}
+                          </p>
+                        ) : null}
                       </li>
                     ))}
                   </ul>
@@ -353,23 +478,37 @@ export function PolicyReader() {
               ) : null}
 
               {result.conflicts.length ? (
-                <Panel title={`Conflicting clauses (${result.conflicts.length}) — needs a decision`}>
+                <Panel
+                  title={`Conflicting clauses (${result.conflicts.length}) — needs a decision`}
+                >
                   {result.conflicts.map((c) => (
-                    <div key={c.field + String(c.category)} className="mb-3 rounded-xl border border-ink/20 bg-mist/40 p-3 last:mb-0">
+                    <div
+                      key={c.field + String(c.category)}
+                      className="mb-3 rounded-xl border border-ink/20 bg-mist/40 p-3 last:mb-0"
+                    >
                       <p className="text-sm font-semibold text-ink">
-                        {c.field.replace(/[._]/g, ' ')}
-                        {c.category ? ` — ${c.category}` : ''}
+                        {c.field.replace(/[._]/g, " ")}
+                        {c.category ? ` — ${c.category}` : ""}
                       </p>
                       <p className="mt-1 text-xs text-mute">{c.reason}</p>
                       <ul className="mt-2 space-y-1">
                         {c.candidates.map((cand) => (
-                          <li key={cand.citation + String(cand.value)} className="flex items-center justify-between gap-2 text-xs">
-                            <span className="text-brand-dark">{cand.citation}</span>
-                            <span className="font-mono font-semibold text-ink">{String(cand.value)}</span>
+                          <li
+                            key={cand.citation + String(cand.value)}
+                            className="flex items-center justify-between gap-2 text-xs"
+                          >
+                            <span className="text-brand-dark">
+                              {cand.citation}
+                            </span>
+                            <span className="font-mono font-semibold text-ink">
+                              {String(cand.value)}
+                            </span>
                           </li>
                         ))}
                       </ul>
-                      <p className="mt-2 text-xs font-medium text-ink">{c.action_required}</p>
+                      <p className="mt-2 text-xs font-medium text-ink">
+                        {c.action_required}
+                      </p>
                     </div>
                   ))}
                 </Panel>
@@ -378,24 +517,42 @@ export function PolicyReader() {
               {(policy?.waiting_periods_requiring_review ?? []).length ? (
                 <Panel title="Held back for review">
                   {policy?.waiting_periods_requiring_review?.map((w) => (
-                    <div key={w.citation} className="mb-2 rounded-xl border border-line p-3 last:mb-0">
-                      <p className="text-sm font-medium text-ink">{w.days}-day waiting period</p>
-                      <p className="mt-1 text-xs text-brand-dark">{w.citation}</p>
+                    <div
+                      key={w.citation}
+                      className="mb-2 rounded-xl border border-line p-3 last:mb-0"
+                    >
+                      <p className="text-sm font-medium text-ink">
+                        {w.days}-day waiting period
+                      </p>
+                      <p className="mt-1 text-xs text-brand-dark">
+                        {w.citation}
+                      </p>
                       <p className="mt-1 text-xs text-mute">{w.reason}</p>
-                      <p className="mt-1 text-xs italic text-mute">{w.engine_behaviour}</p>
+                      <p className="mt-1 text-xs italic text-mute">
+                        {w.engine_behaviour}
+                      </p>
                     </div>
                   ))}
                 </Panel>
               ) : null}
 
               {result.unresolved.length ? (
-                <Panel title={`Not stated in this document (${result.unresolved.length})`}>
+                <Panel
+                  title={`Not stated in this document (${result.unresolved.length})`}
+                >
                   <ul className="space-y-2">
                     {result.unresolved.map((u) => (
-                      <li key={u.field} className="rounded-xl border border-dashed border-line p-3">
-                        <p className="text-sm font-medium text-ink">{u.field.replace(/_/g, ' ')}</p>
+                      <li
+                        key={u.field}
+                        className="rounded-xl border border-dashed border-line p-3"
+                      >
+                        <p className="text-sm font-medium text-ink">
+                          {u.field.replace(/_/g, " ")}
+                        </p>
                         <p className="mt-0.5 text-xs text-mute">{u.reason}</p>
-                        <p className="mt-0.5 text-xs italic text-mute">{u.engine_behaviour}</p>
+                        <p className="mt-0.5 text-xs italic text-mute">
+                          {u.engine_behaviour}
+                        </p>
                       </li>
                     ))}
                   </ul>
@@ -408,13 +565,14 @@ export function PolicyReader() {
             <div className="flex items-start gap-2 rounded-xl border border-brand bg-brand/10 px-4 py-3 text-sm text-ink">
               <FileText className="mt-0.5 h-4 w-4 shrink-0 text-brand-dark" />
               <span>
-                Terms from <strong>{policyFromDocument.sourceName}</strong> are armed for the next ingest. The
-                claim you send next will be assessed against these clauses.
+                Terms from <strong>{policyFromDocument.sourceName}</strong> are
+                armed for the next ingest. The claim you send next will be
+                assessed against these clauses.
               </span>
             </div>
           ) : null}
         </div>
       </div>
     </div>
-  )
+  );
 }

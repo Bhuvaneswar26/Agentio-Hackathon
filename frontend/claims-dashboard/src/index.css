@@ -24,7 +24,7 @@ body,
 
 body {
   margin: 0;
-  background: #f4f7f5;
+  background: radial-gradient(ellipse at top left, #eaf8f1 0, transparent 34rem), #f4f7f5;
   color: #0a0a0a;
   font-family: var(--font-sans);
 }
@@ -38,6 +38,38 @@ input,
 select,
 textarea {
   font-family: inherit;
+}
+
+button,
+a,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:not(:disabled),
+a {
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+button:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+:focus-visible {
+  outline: 3px solid rgb(31 179 119 / 45%);
+  outline-offset: 2px;
+}
+
+input,
+select,
+textarea {
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  box-shadow: 0 0 0 3px rgb(45 216 145 / 12%);
 }
 
 .scrollbar-thin::-webkit-scrollbar {

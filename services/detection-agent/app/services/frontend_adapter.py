@@ -184,12 +184,16 @@ def _frontend_finding(f: dict[str, Any]) -> dict[str, Any]:
     cat = f["category"]
     certainty = ("unassessed" if cat in NON_ASSESSING
                  else "confirmed" if f["amount_type"] == "CALCULATED" and f.get("included_in_totals", True) else "potential")
+    review_status = f.get("review_status", "PENDING")
+    if review_status == "EVIDENCE_REQUESTED":
+        review_status = "REQUEST_EVIDENCE"
     return {"id": f["finding_id"], "backendId": f["finding_id"], "kind": CATEGORY_TO_KIND.get(cat, "fraud_signal"),
             "title": TITLES.get(cat, cat.replace("_", " ").title()), "explanation": f["description"],
             "evidence": _evidence_strings(f.get("evidence", [])), "policyClause": f.get("policy_clause"),
             "invoiceLineIds": [f["item_id"]] if f.get("item_id") else [], "certainty": certainty,
             "severity": f["severity"].lower(), "leakageAmount": f.get("leakage_amount") or 0,
-            "engine": _engine(f["rule_id"]), "ruleId": f["rule_id"], "amountType": f["amount_type"]}
+            "engine": _engine(f["rule_id"]), "ruleId": f["rule_id"], "amountType": f["amount_type"],
+            "reviewStatus": review_status}
 
 
 def _queue(analysis: dict[str, Any], findings: list[dict[str, Any]], has_rules: bool) -> str:

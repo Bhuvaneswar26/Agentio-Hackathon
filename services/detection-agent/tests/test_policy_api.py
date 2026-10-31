@@ -55,7 +55,7 @@ def test_rag_status_supports_gemini_provider(client, monkeypatch):
     finally:
         get_settings.cache_clear()
     assert body["provider"] == "gemini"
-    assert body["model"] == "gemini-2.5-flash"
+    assert body["model"] == "gemini-3.6-flash"
 
 
 def test_extract_returns_a_policy_with_citations(client):
@@ -124,7 +124,7 @@ def test_ask_automatically_uses_gemini(client, monkeypatch):
             "answer": "The insured bears 15% as co-payment.",
             "cited_clauses": ["1.3"],
             "provider": "gemini",
-            "model": "gemini-2.5-flash",
+            "model": "gemini-3.6-flash",
         }
 
     monkeypatch.setattr(policy_api, "answer_with_gemini", fake_answer)
@@ -133,6 +133,25 @@ def test_ask_automatically_uses_gemini(client, monkeypatch):
     assert body["answer"] == "The insured bears 15% as co-payment."
     assert body["cited_clauses"] == ["1.3"]
     assert body["provider"] == "gemini"
+
+
+def test_ask_falls_back_to_retrieved_clauses_when_gemini_is_unavailable(client, monkeypatch):
+    from app.api import policy as policy_api
+
+    def unavailable(question, hits):
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(policy_api, "answer_with_gemini", unavailable)
+    response = client.post("/api/v1/policy/ask", json={
+        "document_text": DOC,
+        "question": "what is the co-payment?",
+    })
+    assert response.status_code == 200
+    body = response.json()
+    assert body["answer_source"] == "retrieval_fallback"
+    assert "Gemini is not ready" in body["llm_notice"]
+    assert body["answered"] is True
+    assert body["clauses"]
 
 
 def test_a_document_with_no_clauses_is_rejected_not_guessed(client):
