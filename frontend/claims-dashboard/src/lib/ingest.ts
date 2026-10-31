@@ -1,5 +1,5 @@
 import Papa from "papaparse";
-import readXlsxFile from "read-excel-file/browser";
+import readXlsxFile from "read-excel-file";
 import type {
   DetectionPayload,
   InvoiceLine,
