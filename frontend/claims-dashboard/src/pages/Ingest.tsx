@@ -7,11 +7,11 @@ import { extractFromFile, extractFromUrl, formatLabel } from '../lib/extract'
 import { payloadFromObject, sampleJsonPayload } from '../lib/ingest'
 import { findingLabel, inr, uid } from '../lib/format'
 import { useAppStore } from '../store/useAppStore'
-import type { DetectionPayload } from '../types'
+import type { Claim, DetectionPayload } from '../types'
 
 export function Ingest() {
   const navigate = useNavigate()
-  const { addJob, updateJob, ingestPayloadAsClaim, agentUrl, log, claims, jobs } = useAppStore()
+  const { addJob, updateJob, ingestPayloadAsClaim, addAgentClaim, agentUrl, log, claims, jobs } = useAppStore()
   const [payload, setPayload] = useState<DetectionPayload | null>(null)
   const [busy, setBusy] = useState(false)
   const [url, setUrl] = useState('')
@@ -57,12 +57,28 @@ export function Ingest() {
     const jobId = uid('JOB')
     addJob({ id: jobId, name: 'Detection agent', format: payload.source.format, status: 'extracting', payload })
     try {
+      // Desk claims travel as history so the engine can detect duplicates across the portfolio.
+      const history = claims.slice(0, 200).map((c) => ({
+        claimId: c.id,
+        incidentDate: c.incidentDate,
+        amount: c.requestedAmount,
+        status: c.queue,
+        claimant: c.claimant,
+        provider: c.provider,
+        invoiceLines: c.lines,
+      }))
       const res = await fetch(agentUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, history: [...payload.history, ...history] }),
       })
       const text = await res.text()
+      let parsed: { claim?: Claim; status?: string } | null = null
+      try {
+        parsed = JSON.parse(text)
+      } catch {
+        parsed = null
+      }
       updateJob(jobId, {
         status: res.ok ? 'sent' : 'failed',
         sentAt: new Date().toISOString(),
@@ -74,9 +90,10 @@ export function Ingest() {
         action: res.ok ? 'Sent payload to detection agent' : 'Agent call failed — local preview still available',
         detail: `${agentUrl} · ${res.status}`,
       })
-      if (!res.ok && !claimId) {
-        const id = ingestPayloadAsClaim(payload)
-        setClaimId(id)
+      if (res.ok && parsed?.claim && !claimId) {
+        setClaimId(addAgentClaim(parsed.claim))
+      } else if (!res.ok && !claimId) {
+        setClaimId(ingestPayloadAsClaim(payload))
       }
     } catch (err) {
       updateJob(jobId, {
@@ -266,7 +283,7 @@ export function Ingest() {
                     onClick={() => void sendToAgent()}
                     className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm text-white"
                   >
-                    <Send size={14} /> Send to detection agent
+                    <Send size={14} /> Analyse with ClaimsGuard engine
                   </button>
                   {claimId ? (
                     <button

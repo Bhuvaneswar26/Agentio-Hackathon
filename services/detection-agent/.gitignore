@@ -1,0 +1,10 @@
+__pycache__/
+.pytest_cache/
+.env
+*.db
+ml_models/*
+!ml_models/.gitkeep
+reports/*
+!reports/.gitkeep
+datasets/*
+!datasets/.gitkeep

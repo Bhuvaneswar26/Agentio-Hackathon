@@ -60,6 +60,10 @@ export type Finding = {
   severity: Severity
   leakageAmount: number
   engine: 'rules' | 'duplicate' | 'ml' | 'ocr' | 'graph'
+  /** Set when the finding came from the ClaimsGuard engine (used for reviewer sync). */
+  backendId?: string
+  ruleId?: string
+  amountType?: 'CALCULATED' | 'ESTIMATED' | 'UNQUANTIFIED'
 }
 
 export type AuditEvent = {
@@ -98,6 +102,8 @@ export type Claim = {
   notes: string
   supervisorNote?: string
   specialReason?: string
+  /** ClaimsGuard engine analysis id, when scored by the backend. */
+  analysisId?: string
 }
 
 export type ProviderStat = {
@@ -141,6 +147,9 @@ export type DetectionPayload = {
     coverage?: string
     deductible?: number
     copayPercent?: number
+    validFrom?: string
+    validUntil?: string
+    sumInsured?: number
     rules: PolicyRule[]
   }
   history: Array<{
@@ -148,6 +157,9 @@ export type DetectionPayload = {
     incidentDate: string
     amount: number
     status: string
+    claimant?: string
+    provider?: string
+    invoiceLines?: InvoiceLine[]
   }>
   documents: Array<{
     name: string

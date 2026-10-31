@@ -1,6 +1,6 @@
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
-import type { DetectionPayload, InvoiceLine, SourceFormat } from '../types'
+import type { DetectionPayload, InvoiceLine, PolicyRule, SourceFormat } from '../types'
 import { uid } from './format'
 
 function num(v: unknown): number | undefined {
@@ -22,6 +22,16 @@ function pick(row: Record<string, unknown>, keys: string[]) {
     if (found) return found[1]
   }
   return undefined
+}
+
+function rulesFrom(input: unknown): PolicyRule[] {
+  if (!Array.isArray(input)) return []
+  return input.flatMap((r, i) => {
+    const o = r as Record<string, unknown>
+    const type = str(o.type)
+    if (!type || !['limit', 'exclusion', 'deductible', 'copay', 'sublimit', 'coverage'].includes(type)) return []
+    return [{ id: str(o.id) ?? `PR-${i + 1}`, name: str(o.name) ?? type, clause: str(o.clause) ?? '', type: type as PolicyRule['type'], value: num(o.value), unit: str(o.unit) }]
+  })
 }
 
 function linesFromRows(rows: Record<string, unknown>[]): InvoiceLine[] {
@@ -106,7 +116,10 @@ export function payloadFromObject(input: unknown, format: SourceFormat, name?: s
       deductible: num(pick(claimSrc, ['deductible'])),
       copayPercent: num(pick(claimSrc, ['copay', 'copaypercent'])),
       coverage: str(pick(claimSrc, ['coverage'])),
-      rules: [],
+      validFrom: str(pick(claimSrc, ['validfrom', 'policystart'])),
+      validUntil: str(pick(claimSrc, ['validuntil', 'policyend', 'expiry'])),
+      sumInsured: num(pick(claimSrc, ['suminsured'])),
+      rules: rulesFrom((obj.policyRules as unknown) ?? (obj.policy as Record<string, unknown> | undefined)?.rules),
     },
     documents: name ? [{ name, type: format, excerpt: JSON.stringify(claim) }] : [],
     extraction: {
@@ -222,6 +235,12 @@ export function sampleJsonPayload(): DetectionPayload {
       city: 'Bengaluru',
       deductible: 10000,
       copay: 20,
+      validFrom: '2026-01-01',
+      validUntil: '2026-12-31',
+      policyRules: [
+        { id: 'PR-ROOM', name: 'Room rent sub-limit', clause: 'Room rent payable up to ₹5,000 per day.', type: 'sublimit', value: 5000, unit: 'per day' },
+        { id: 'PR-EXC', name: 'Consumables exclusion', clause: 'Non-medical consumables are excluded.', type: 'exclusion' },
+      ],
       invoiceLines: [
         { description: 'Room rent 3 days', code: 'ROOM-DLX', quantity: 3, unitPrice: 7000, amount: 21000, invoice: 'INV-44109' },
         { description: 'CBC diagnostic test', code: 'LAB-CBC', amount: 2000, invoice: 'INV-44109' },

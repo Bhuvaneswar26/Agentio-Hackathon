@@ -8,7 +8,7 @@ export function Settings() {
       <PageHeader
         eyebrow="Integration"
         title="Detection agent connection"
-        description="This UI does not own the core leakage engine. Point it at the FastAPI project. The payload schema is version 1.0 and is produced after OCR or structured parse."
+        description="The core leakage engine lives in services/detection-agent (FastAPI). The payload schema is version 1.0 and is produced after OCR or structured parse; the engine returns a scored claim that lands on the desk."
       />
       <Panel title="Endpoint">
         <label className="text-xs text-mute">POST URL</label>
