@@ -11,6 +11,24 @@
   "city": "Bengaluru",
   "deductible": 10000,
   "copay": 20,
+  "validFrom": "2026-01-01",
+  "validUntil": "2026-12-31",
+  "policyRules": [
+    {
+      "id": "PR-ROOM",
+      "name": "Room rent sub-limit",
+      "clause": "Room rent payable up to ₹5,000 per day.",
+      "type": "sublimit",
+      "value": 5000,
+      "unit": "per day"
+    },
+    {
+      "id": "PR-EXC",
+      "name": "Consumables exclusion",
+      "clause": "Non-medical consumables are excluded.",
+      "type": "exclusion"
+    }
+  ],
   "invoiceLines": [
     {
       "description": "Room rent 3 days",

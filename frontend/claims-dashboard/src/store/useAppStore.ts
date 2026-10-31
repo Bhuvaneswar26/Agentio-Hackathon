@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { allSeedClaims, seedAudit, seedProviders } from '../data/seed'
 import { runPreviewDetection } from '../lib/detectPreview'
+import { DEFAULT_AGENT_URL, syncReview } from '../lib/api'
 import { uid } from '../lib/format'
 import type { AuditEvent, Claim, ClaimQueue, DetectionPayload, IngestJob, Role } from '../types'
 
@@ -24,6 +25,7 @@ type AppState = {
   addJob: (job: IngestJob) => void
   updateJob: (id: string, patch: Partial<IngestJob>) => void
   ingestPayloadAsClaim: (payload: DetectionPayload) => string
+  addAgentClaim: (claim: Claim) => string
   moveQueue: (claimId: string, queue: ClaimQueue, reason?: string) => void
   addNote: (claimId: string, note: string) => void
   log: (event: Omit<AuditEvent, 'id' | 'at'>) => void
@@ -67,7 +69,7 @@ export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
       role: 'handler',
-      agentUrl: 'http://localhost:8000/v1/detect',
+      agentUrl: DEFAULT_AGENT_URL,
       claims: allSeedClaims,
       audit: seedAudit,
       jobs: [],
@@ -91,7 +93,21 @@ export const useAppStore = create<AppState>()(
         })
         return claim.id
       },
+      addAgentClaim: (incoming) => {
+        const claim = { ...incoming }
+        if (get().claims.some((c) => c.id === claim.id)) claim.id = `${claim.id}-${uid('R').slice(-4)}`
+        set({ claims: [claim, ...get().claims] })
+        get().log({
+          actor: 'ClaimsGuard engine',
+          action: 'Claim analysed by detection engine',
+          detail: `${claim.id} · ${claim.findings.length} findings · queue ${claim.queue} · risk ${claim.riskScore}`,
+          claimId: claim.id,
+        })
+        return claim.id
+      },
       moveQueue: (claimId, queue, reason) => {
+        const target = get().claims.find((c) => c.id === claimId)
+        if (target) void syncReview(get().agentUrl, target, queue, get().role, reason)
         set({
           claims: get().claims.map((c) =>
             c.id === claimId
